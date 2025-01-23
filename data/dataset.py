@@ -32,24 +32,43 @@ class COCODataset(torch.utils.data.Dataset):
         img_id = self.ids[index]
         ann_ids = coco.getAnnIds(imgIds=img_id)
         annotations = coco.loadAnns(ann_ids)
-        num_objs = len(annotations)
 
         # Load image
         img_info = coco.loadImgs(img_id)[0]
         image_path = os.path.join(self.root_dir, img_info['file_name'])
         image = np.array(Image.open(image_path).convert('RGB'))
+        
+        def convert_bbox(bbox, width, height):
+            x, y, w, h = bbox
+            
+            # Convert to pascal_voc format
+            x_min = x / width
+            y_min = y / height
+            x_max = (x + w) / width
+            y_max = (y + h) / height
+            
+            # Clamp values to [0,1]
+            x_min = max(0, min(1, x_min))
+            y_min = max(0, min(1, y_min))
+            x_max = max(0, min(1, x_max))
+            y_max = max(0, min(1, y_max))
+            
+            return [x_min, y_min, x_max, y_max]
 
         # Convert annotations to the format needed
         boxes = []
         labels = []
         masks = []
         mask_tensors = []
+        img_width = img_info['width']
+        img_height = img_info['height']
         
         for ann in annotations:
-            # Get bbox
-            x, y, w, h = ann['bbox']
-            boxes.append([x, y, x + w, y + h])
-            labels.append(ann['category_id'])
+            if 'bbox' in ann and 'category_id' in ann:
+                bbox = convert_bbox(ann['bbox'], img_width, img_height)
+                if bbox[2] > bbox[0] and bbox[3] > bbox[1]:  # Valid box check
+                    boxes.append(bbox)
+                    labels.append(ann['category_id'])  # Only append label if box is valid
             
             # Get segmentation mask if available
             if 'segmentation' in ann and ann['segmentation']:
@@ -64,8 +83,9 @@ class COCODataset(torch.utils.data.Dataset):
                   mask_tensor = torch.from_numpy(mask).to(dtype=torch.uint8)
                   mask_tensors.append(mask_tensor)
 
-        boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        labels = torch.ones((num_objs,), dtype=torch.int64)
+        # Convert to numpy arrays
+        boxes = np.array(boxes, dtype=np.float32)
+        labels = np.array(labels, dtype=np.int64)
         masks = torch.stack(mask_tensors) if mask_tensors else torch.zeros(
             (0, img_info['height'], img_info['width']), 
             dtype=torch.uint8
