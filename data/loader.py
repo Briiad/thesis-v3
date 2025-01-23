@@ -22,7 +22,7 @@ def get_transform(train=True):
             ),
             ToTensorV2(),
         ], bbox_params=A.BboxParams(
-               format='pascal_voc',
+               format='albumentations',
                label_fields=['labels']
            ), is_check_shapes=False)
     else:
@@ -37,7 +37,7 @@ def get_transform(train=True):
             ),
             ToTensorV2(),
         ], bbox_params=A.BboxParams(
-               format='pascal_voc',
+               format='albumentations',
                label_fields=['labels']
            ), is_check_shapes=False)
 
