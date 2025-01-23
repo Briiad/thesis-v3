@@ -51,7 +51,7 @@ class Trainer:
         for images, targets in progress_bar:
             # Move to device
             images = [image.to(self.device) for image in images]
-            targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+            targets = [{k: v.to(self.device) if isinstance(v, torch.Tensor) else torch.as_tensor(v).to(self.device) for k, v in t.items()} for t in targets]
             
             # Forward pass
             loss_dict = self.model(images, targets)
