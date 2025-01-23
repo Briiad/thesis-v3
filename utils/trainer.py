@@ -1,0 +1,185 @@
+import torch
+from torch.optim import Adam
+from torch.optim.lr_scheduler import StepLR
+import os
+from tqdm import tqdm
+from torchmetrics.detection import MeanAveragePrecision
+from torchmetrics.detection import IntersectionOverUnion
+import wandb
+from typing import Dict, List
+
+class Trainer:
+    def __init__(self, model, train_loader, val_loader, test_loader, config):
+        self.model = model
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        self.test_loader = test_loader
+        self.config = config
+        
+        # Setup device
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model = self.model.to(self.device)
+        
+        # Setup optimizer and scheduler
+        self.optimizer = Adam(
+            self.model.parameters(),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay
+        )
+        self.scheduler = StepLR(
+            self.optimizer,
+            step_size=config.lr_scheduler_step,
+            gamma=config.lr_scheduler_gamma
+        )
+        
+        # Setup metrics
+        self.map_metric = MeanAveragePrecision()
+        self.iou_metric = IntersectionOverUnion()
+        
+        # Create checkpoint directory if it doesn't exist
+        os.makedirs(config.checkpoint_dir, exist_ok=True)
+        
+        # Initialize best mAP for model saving
+        self.best_map = 0.0
+
+    def train_one_epoch(self, epoch: int) -> Dict:
+        """Train for one epoch"""
+        self.model.train()
+        total_loss = 0
+        progress_bar = tqdm(self.train_loader, desc=f'Epoch {epoch}')
+        
+        for images, targets in progress_bar:
+            # Move to device
+            images = [image.to(self.device) for image in images]
+            targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+            
+            # Forward pass
+            loss_dict = self.model(images, targets)
+            losses = sum(loss for loss in loss_dict.values())
+            
+            # Backward pass
+            self.optimizer.zero_grad()
+            losses.backward()
+            self.optimizer.step()
+            
+            total_loss += losses.item()
+            progress_bar.set_postfix({'loss': losses.item()})
+        
+        avg_loss = total_loss / len(self.train_loader)
+        return {'train_loss': avg_loss}
+
+    def validate(self) -> Dict:
+        """Validate the model"""
+        self.model.eval()
+        all_preds = []
+        all_targets = []
+        
+        with torch.no_grad():
+            for images, targets in tqdm(self.val_loader, desc='Validating'):
+                images = [image.to(self.device) for image in images]
+                targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+                
+                predictions = self.model(images)
+                all_preds.extend(predictions)
+                all_targets.extend(targets)
+        
+        # Calculate metrics
+        self.map_metric.update(all_preds, all_targets)
+        map_results = self.map_metric.compute()
+        self.map_metric.reset()
+        
+        return {
+            'val_mAP': map_results['map'],
+            'val_mAP_50': map_results['map_50'],
+            'val_mAP_75': map_results['map_75']
+        }
+
+    def test(self) -> Dict:
+        """Test the model"""
+        self.model.eval()
+        all_preds = []
+        all_targets = []
+        
+        with torch.no_grad():
+            for images, targets in tqdm(self.test_loader, desc='Testing'):
+                images = [image.to(self.device) for image in images]
+                targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+                
+                predictions = self.model(images)
+                all_preds.extend(predictions)
+                all_targets.extend(targets)
+        
+        # Calculate metrics
+        self.map_metric.update(all_preds, all_targets)
+        self.iou_metric.update(all_preds, all_targets)
+        
+        map_results = self.map_metric.compute()
+        iou_results = self.iou_metric.compute()
+        
+        self.map_metric.reset()
+        self.iou_metric.reset()
+        
+        return {
+            'test_mAP': map_results['map'],
+            'test_mAP_50': map_results['map_50'],
+            'test_mAP_75': map_results['map_75'],
+            'test_precision': map_results['mar_100'],  # Using MAR as proxy for precision
+            'test_recall': map_results['mar_100'],     # Using MAR as proxy for recall
+            'test_f1': 2 * (map_results['mar_100'] * map_results['mar_100']) / 
+                      (map_results['mar_100'] + map_results['mar_100']), # F1 from precision/recall
+            'test_iou': iou_results
+        }
+
+    def save_checkpoint(self, epoch: int, metrics: Dict, is_best: bool = False):
+        """Save model checkpoint"""
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
+            'metrics': metrics
+        }
+        
+        # Save regular checkpoint
+        if epoch % self.config.save_frequency == 0:
+            path = os.path.join(self.config.checkpoint_dir, f'checkpoint_epoch_{epoch}.pth')
+            torch.save(checkpoint, path)
+        
+        # Save best model
+        if is_best:
+            best_path = os.path.join(self.config.checkpoint_dir, 'best_model.pth')
+            torch.save(checkpoint, best_path)
+
+    def train(self):
+        """Full training loop"""
+        # Initialize wandb
+        wandb.init(project="object_detection", config=self.config)
+        
+        for epoch in range(self.config.epochs):
+            # Training
+            train_metrics = self.train_one_epoch(epoch)
+            
+            # Validation
+            val_metrics = self.validate()
+            
+            # Update learning rate
+            self.scheduler.step()
+            
+            # Log metrics
+            metrics = {**train_metrics, **val_metrics}
+            wandb.log(metrics)
+            
+            # Save checkpoint if it's the best model
+            if val_metrics['val_mAP'] > self.best_map:
+                self.best_map = val_metrics['val_mAP']
+                self.save_checkpoint(epoch, metrics, is_best=True)
+            
+            # Regular checkpoint saving
+            self.save_checkpoint(epoch, metrics)
+        
+        # Final test
+        test_metrics = self.test()
+        wandb.log(test_metrics)
+        wandb.finish()
+        
+        return test_metrics
