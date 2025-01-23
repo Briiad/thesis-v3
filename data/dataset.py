@@ -32,6 +32,7 @@ class COCODataset(torch.utils.data.Dataset):
         img_id = self.ids[index]
         ann_ids = coco.getAnnIds(imgIds=img_id)
         annotations = coco.loadAnns(ann_ids)
+        num_objs = len(annotations)
 
         # Load image
         img_info = coco.loadImgs(img_id)[0]
@@ -63,9 +64,8 @@ class COCODataset(torch.utils.data.Dataset):
                   mask_tensor = torch.from_numpy(mask).to(dtype=torch.uint8)
                   mask_tensors.append(mask_tensor)
 
-        # Convert to numpy arrays
-        boxes = np.array(boxes, dtype=np.float32)
-        labels = np.array(labels, dtype=np.int64)
+        boxes = torch.as_tensor(boxes, dtype=torch.float32)
+        labels = torch.ones((num_objs,), dtype=torch.int64)
         masks = torch.stack(mask_tensors) if mask_tensors else torch.zeros(
             (0, img_info['height'], img_info['width']), 
             dtype=torch.uint8
