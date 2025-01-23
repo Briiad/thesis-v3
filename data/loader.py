@@ -14,7 +14,9 @@ def get_transform(train=True):
     if train:
         return A.Compose([
             A.RandomResizedCrop(
-                size=data_config.img_size
+                size=data_config.img_size,
+                scale=(0.5, 1.0),
+                p=1.0
             ),
             A.HorizontalFlip(p=data_config.flip_prob),
             A.RandomBrightnessContrast(p=data_config.brightness_contrast_prob),

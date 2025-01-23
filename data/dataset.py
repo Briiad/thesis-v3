@@ -77,14 +77,6 @@ class COCODataset(torch.utils.data.Dataset):
             'masks': masks,
             'image_id': torch.tensor([img_id])
         }
-        
-        if len(boxes) > 0:
-            boxes[:, 2] = np.maximum(boxes[:, 0] + 1, boxes[:, 2])  # Ensure width > 0
-            boxes[:, 3] = np.maximum(boxes[:, 1] + 1, boxes[:, 3])  # Ensure height > 0
-            
-            # Normalize coordinates
-            boxes[:, [0, 2]] /= img_info['width']
-            boxes[:, [1, 3]] /= img_info['height']
 
         # Apply transforms
         if self.transform is not None:
