@@ -50,6 +50,7 @@ def get_data_loader(root_dir, ann_file, train=True):
         train (bool): If True, use training transforms
     """
     transform = get_transform(train=train)
+    dataset = COCODataset(root_dir, ann_file, transform=transform)
     
     # Update config with dataset information if not set
     if data_config.categories is None:
