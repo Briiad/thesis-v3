@@ -85,32 +85,29 @@ class Trainer:
     def validate(self) -> Dict:
         """Validate the model"""
         self.model.eval()
-        
-        # Reset metrics before validation
         self.map_metric.reset()
         
         with torch.no_grad():
             for images, targets in tqdm(self.val_loader, desc='Validating'):
+                # Ensure images are on the correct device
                 images = [image.to(self.device) for image in images]
                 
-                # Prepare targets in the correct format
-                targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+                # Carefully move targets to the same device
+                processed_targets = []
+                for target in targets:
+                    processed_target = {}
+                    for k, v in target.items():
+                        # Explicitly convert to tensor and move to device if needed
+                        if not isinstance(v, torch.Tensor):
+                            v = torch.as_tensor(v)
+                        processed_target[k] = v.to(self.device)
+                    processed_targets.append(processed_target)
                 
-                # Get predictions in inference mode
+                # Get predictions
                 predictions = self.model(images)
                 
-                # Ensure predictions are in the right format for torchmetrics
-                processed_preds = []
-                for pred in predictions:
-                    processed_pred = {
-                        'boxes': pred['boxes'],
-                        'labels': pred['labels'],
-                        'scores': pred.get('scores', torch.ones_like(pred['labels'], dtype=torch.float))
-                    }
-                    processed_preds.append(processed_pred)
-                
                 # Update metrics
-                self.map_metric.update(processed_preds, targets)
+                self.map_metric.update(predictions, processed_targets)
         
         # Compute and reset metrics
         map_results = self.map_metric.compute()
