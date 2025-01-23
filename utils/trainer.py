@@ -51,11 +51,22 @@ class Trainer:
         for images, targets in progress_bar:
             # Move to device
             images = [image.to(self.device) for image in images]
-            targets = [{k: v.to(self.device) if isinstance(v, torch.Tensor) else torch.as_tensor(v).to(self.device) for k, v in t.items()} for t in targets]
-          
-            print(images)
-            print(targets)
-                        
+            # Process targets with proper mask formatting
+            formatted_targets = []
+            for target in targets:
+                processed = {}
+                for k, v in target.items():
+                    if k == 'masks' and isinstance(v, torch.Tensor):
+                        if v.numel() > 0:  # Only process non-empty masks
+                            if len(v.shape) == 2:  # [H, W]
+                                v = v.unsqueeze(0)  # [1, H, W]
+                            elif len(v.shape) == 3:  # [N, H, W]
+                                pass  # Already in correct format
+                        else:
+                            v = torch.zeros((0, 320, 320), dtype=torch.uint8)  # Empty mask placeholder
+                    processed[k] = v.to(self.device) if isinstance(v, torch.Tensor) else torch.as_tensor(v).to(self.device)
+                formatted_targets.append(processed)
+                    
             # Forward pass
             loss_dict = self.model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
@@ -74,29 +85,44 @@ class Trainer:
     def validate(self) -> Dict:
         """Validate the model"""
         self.model.eval()
-        all_preds = []
-        all_targets = []
+        
+        # Reset metrics before validation
+        self.map_metric.reset()
         
         with torch.no_grad():
             for images, targets in tqdm(self.val_loader, desc='Validating'):
                 images = [image.to(self.device) for image in images]
+                
+                # Prepare targets in the correct format
                 targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
                 
+                # Get predictions in inference mode
                 predictions = self.model(images)
-                all_preds.extend(predictions)
-                all_targets.extend(targets)
+                
+                # Ensure predictions are in the right format for torchmetrics
+                processed_preds = []
+                for pred in predictions:
+                    processed_pred = {
+                        'boxes': pred['boxes'],
+                        'labels': pred['labels'],
+                        'scores': pred.get('scores', torch.ones_like(pred['labels'], dtype=torch.float))
+                    }
+                    processed_preds.append(processed_pred)
+                
+                # Update metrics
+                self.map_metric.update(processed_preds, targets)
         
-        # Calculate metrics
-        self.map_metric.update(all_preds, all_targets)
+        # Compute and reset metrics
         map_results = self.map_metric.compute()
         self.map_metric.reset()
+        
+        print(map_results)
         
         return {
             'val_mAP': map_results['map'],
             'val_mAP_50': map_results['map_50'],
             'val_mAP_75': map_results['map_75']
         }
-
     def test(self) -> Dict:
         """Test the model"""
         self.model.eval()

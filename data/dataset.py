@@ -42,6 +42,7 @@ class COCODataset(torch.utils.data.Dataset):
         boxes = []
         labels = []
         masks = []
+        mask_tensors = []
         
         for ann in annotations:
             # Get bbox
@@ -55,16 +56,20 @@ class COCODataset(torch.utils.data.Dataset):
                   # Polygon format - only create mask if polygon exists
                   if ann['segmentation'][0]:
                       mask = coco.annToMask(ann)
-                      masks.append(mask)
+                      mask_tensor = torch.from_numpy(mask).to(dtype=torch.uint8)
+                      mask_tensors.append(mask_tensor)
               elif isinstance(ann['segmentation'], dict):
                   # RLE format
-                  mask = coco.annToMask(ann)
-                  masks.append(mask)
+                  mask_tensor = torch.from_numpy(mask).to(dtype=torch.uint8)
+                  mask_tensors.append(mask_tensor)
 
         # Convert to numpy arrays
         boxes = np.array(boxes, dtype=np.float32)
         labels = np.array(labels, dtype=np.int64)
-        masks = np.array(masks) if masks else np.array([])
+        masks = torch.stack(mask_tensors) if mask_tensors else torch.zeros(
+            (0, img_info['height'], img_info['width']), 
+            dtype=torch.uint8
+        )
 
         target = {
             'boxes': boxes,
@@ -74,24 +79,30 @@ class COCODataset(torch.utils.data.Dataset):
         }
         
         if len(boxes) > 0:
-          boxes[:, [0, 2]] /= img_info['width']
-          boxes[:, [1, 3]] /= img_info['height']
+            boxes[:, 2] = np.maximum(boxes[:, 0] + 1, boxes[:, 2])  # Ensure width > 0
+            boxes[:, 3] = np.maximum(boxes[:, 1] + 1, boxes[:, 3])  # Ensure height > 0
+            
+            # Normalize coordinates
+            boxes[:, [0, 2]] /= img_info['width']
+            boxes[:, [1, 3]] /= img_info['height']
 
         # Apply transforms
         if self.transform is not None:
-            # Convert to albumentations format
             transformed = self.transform(
                 image=image,
                 bboxes=boxes,
                 labels=labels,
-                masks=masks if masks.size > 0 else None
+                masks=masks.numpy() if masks.numel() > 0 else None
             )
             
             image = transformed['image']
             target['boxes'] = torch.as_tensor(transformed['bboxes'], dtype=torch.float32)
             target['labels'] = torch.as_tensor(transformed['labels'], dtype=torch.int64)
-            if masks.size > 0:
+            # Fix mask handling
+            if masks.numel() > 0 and 'masks' in transformed:
                 target['masks'] = torch.as_tensor(transformed['masks'], dtype=torch.uint8)
+            else:
+                target['masks'] = torch.zeros((0, image.shape[1], image.shape[2]), dtype=torch.uint8)
 
         if self.target_transform is not None:
             target = self.target_transform(target)

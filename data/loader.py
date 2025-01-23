@@ -27,7 +27,7 @@ def get_transform(train=True):
         ], bbox_params=A.BboxParams(
                format='coco',
                label_fields=['labels']
-           ))
+           ), is_check_shapes=False)
     else:
         return A.Compose([
             A.Resize(
@@ -42,7 +42,7 @@ def get_transform(train=True):
         ], bbox_params=A.BboxParams(
                format='coco',
                label_fields=['labels']
-           ))
+           ), is_check_shapes=False)
 
 def get_data_loader(root_dir, ann_file, train=True):
     """
