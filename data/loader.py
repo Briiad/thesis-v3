@@ -13,6 +13,10 @@ def get_transform(train=True):
     """
     if train:
         return A.Compose([
+            A.Resize(
+                height=data_config.img_size[0],
+                width=data_config.img_size[1]
+            ),
             A.HorizontalFlip(p=data_config.flip_prob),
             A.RandomBrightnessContrast(p=data_config.brightness_contrast_prob),
             A.Rotate(limit=30, p=data_config.rotate_prob),
