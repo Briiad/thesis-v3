@@ -17,7 +17,7 @@ class Trainer:
         self.config = config
         
         # Setup device
-        self.device = torch.device('cuda')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = self.model.to(self.device)
         
         # Setup optimizer and scheduler
@@ -43,30 +43,18 @@ class Trainer:
         self.best_map = 0.0
 
     def train_one_epoch(self, epoch: int) -> Dict:
-        """Train for one epoch"""
         self.model.train()
         total_loss = 0
         progress_bar = tqdm(self.train_loader, desc=f'Epoch {epoch}')
         
         for images, targets in progress_bar:
-            # Move to device
+            # Move images to device
             images = [image.to(self.device) for image in images]
-            # Process targets with proper mask formatting
-            formatted_targets = []
-            for target in targets:
-                processed = {}
-                for k, v in target.items():
-                    if k == 'masks' and isinstance(v, torch.Tensor):
-                        if v.numel() > 0:  # Only process non-empty masks
-                            if len(v.shape) == 2:  # [H, W]
-                                v = v.unsqueeze(0)  # [1, H, W]
-                            elif len(v.shape) == 3:  # [N, H, W]
-                                pass  # Already in correct format
-                        else:
-                            v = torch.zeros((0, 320, 320), dtype=torch.uint8)  # Empty mask placeholder
-                    processed[k] = v.to(self.device) if isinstance(v, torch.Tensor) else torch.as_tensor(v).to(self.device)
-                formatted_targets.append(processed)
-                    
+            
+            # Move targets to device
+            targets = [{k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                      for k, v in t.items()} for t in targets]
+            
             # Forward pass
             loss_dict = self.model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
