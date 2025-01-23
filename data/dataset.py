@@ -65,6 +65,10 @@ class COCODataset(torch.utils.data.Dataset):
             'masks': masks,
             'image_id': torch.tensor([img_id])
         }
+        
+        if len(boxes) > 0:
+          boxes[:, [0, 2]] /= img_info['width']
+          boxes[:, [1, 3]] /= img_info['height']
 
         # Apply transforms
         if self.transform is not None:
