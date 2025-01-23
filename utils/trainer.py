@@ -49,13 +49,13 @@ class Trainer:
         progress_bar = tqdm(self.train_loader, desc=f'Epoch {epoch}')
         
         for images, targets in progress_bar:
-            # Stack images into a single tensor
-            images = torch.stack(images)
-        
             # Move to device
             images = [image.to(self.device) for image in images]
             targets = [{k: v.to(self.device) if isinstance(v, torch.Tensor) else torch.as_tensor(v).to(self.device) for k, v in t.items()} for t in targets]
-            
+          
+            print(images)
+            print(targets)
+                        
             # Forward pass
             loss_dict = self.model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
