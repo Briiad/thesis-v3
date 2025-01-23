@@ -13,6 +13,10 @@ def get_transform(train=True):
     """
     if train:
         return A.Compose([
+            A.Resize(
+                height=data_config.img_size[0],
+                width=data_config.img_size[1]
+            ),
             A.HorizontalFlip(p=data_config.flip_prob),
             A.RandomBrightnessContrast(p=data_config.brightness_contrast_prob),
             A.Rotate(limit=30, p=data_config.rotate_prob),
@@ -22,7 +26,7 @@ def get_transform(train=True):
             ),
             ToTensorV2(),
         ], bbox_params=A.BboxParams(
-               format='albumentations',
+               format='coco',
                label_fields=['labels']
            ), is_check_shapes=False)
     else:
@@ -37,7 +41,7 @@ def get_transform(train=True):
             ),
             ToTensorV2(),
         ], bbox_params=A.BboxParams(
-               format='albumentations',
+               format='coco',
                label_fields=['labels']
            ), is_check_shapes=False)
 
@@ -54,9 +58,8 @@ def get_data_loader(root_dir, ann_file, train=True):
     
     # Update config with dataset information if not set
     if data_config.categories is None:
-        dataset = COCODataset(root_dir, ann_file, transform=transform)
-        data_config.categories = dataset.cat_ids
-        data_config.num_classes = len(dataset.cat_ids)
+        data_config.categories = dataset.coco.loadCats(dataset.coco.getCatIds())
+        data_config.num_classes = len(data_config.categories)
     
     return DataLoader(
         dataset,
