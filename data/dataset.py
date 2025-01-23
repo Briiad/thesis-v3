@@ -20,6 +20,9 @@ class COCODataset(torch.utils.data.Dataset):
         self.ids = list(sorted(self.coco.imgs.keys()))
         self.transform = transform
         self.target_transform = target_transform
+        
+        self.cat_ids = sorted(self.coco.getCatIds())
+        self.cat_to_continuous = {cid: idx for idx, cid in enumerate(self.cat_ids)}
 
     def __getitem__(self, index):
         """
@@ -68,7 +71,8 @@ class COCODataset(torch.utils.data.Dataset):
                 bbox = convert_bbox(ann['bbox'], img_width, img_height)
                 if bbox[2] > bbox[0] and bbox[3] > bbox[1]:  # Valid box check
                     boxes.append(bbox)
-                    labels.append(ann['category_id'])  # Only append label if box is valid
+                    label_idx = self.cat_to_continuous[ann['category_id']]
+                    labels.append(label_idx) 
             
             # Get segmentation mask if available
             if 'segmentation' in ann and ann['segmentation']:

@@ -50,12 +50,12 @@ def get_data_loader(root_dir, ann_file, train=True):
         train (bool): If True, use training transforms
     """
     transform = get_transform(train=train)
-    dataset = COCODataset(root_dir, ann_file, transform=transform)
     
     # Update config with dataset information if not set
     if data_config.categories is None:
-        data_config.categories = dataset.coco.loadCats(dataset.coco.getCatIds())
-        data_config.num_classes = len(data_config.categories)
+        dataset = COCODataset(root_dir, ann_file, transform=transform)
+        data_config.categories = dataset.cat_ids
+        data_config.num_classes = len(dataset.cat_ids)
     
     return DataLoader(
         dataset,
