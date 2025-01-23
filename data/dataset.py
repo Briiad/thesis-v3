@@ -50,9 +50,16 @@ class COCODataset(torch.utils.data.Dataset):
             labels.append(ann['category_id'])
             
             # Get segmentation mask if available
-            if 'segmentation' in ann:
-                mask = coco.annToMask(ann)
-                masks.append(mask)
+            if 'segmentation' in ann and ann['segmentation']:
+              if isinstance(ann['segmentation'], list):
+                  # Polygon format - only create mask if polygon exists
+                  if ann['segmentation'][0]:
+                      mask = coco.annToMask(ann)
+                      masks.append(mask)
+              elif isinstance(ann['segmentation'], dict):
+                  # RLE format
+                  mask = coco.annToMask(ann)
+                  masks.append(mask)
 
         # Convert to numpy arrays
         boxes = np.array(boxes, dtype=np.float32)

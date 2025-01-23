@@ -1,0 +1,9 @@
+{"time":"2025-01-23T20:42:40.9800869+07:00","level":"INFO","msg":"stream: starting","core version":"0.19.4","symlink path":"E:\\Projects\\thesis-v3\\wandb\\run-20250123_204240-ltj6jqt9\\logs\\debug-core.log"}
+{"time":"2025-01-23T20:42:41.6999866+07:00","level":"INFO","msg":"created new stream","id":"ltj6jqt9"}
+{"time":"2025-01-23T20:42:41.6999866+07:00","level":"INFO","msg":"stream: started","id":"ltj6jqt9"}
+{"time":"2025-01-23T20:42:41.700137+07:00","level":"INFO","msg":"writer: Do: started","stream_id":"ltj6jqt9"}
+{"time":"2025-01-23T20:42:41.7002307+07:00","level":"INFO","msg":"handler: started","stream_id":"ltj6jqt9"}
+{"time":"2025-01-23T20:42:41.7002307+07:00","level":"INFO","msg":"sender: started","stream_id":"ltj6jqt9"}
+{"time":"2025-01-23T20:42:42.1265912+07:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-23T20:42:52.1466758+07:00","level":"ERROR","msg":"monitor: cpu: error sampling metrics: couldn't find pid: 7228"}
+{"time":"2025-01-23T20:43:02.139847+07:00","level":"ERROR","msg":"monitor: cpu: error sampling metrics: couldn't find pid: 7228"}
