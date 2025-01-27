@@ -1,98 +1,99 @@
+import torch
 from torch.utils.data import DataLoader
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
-
-from config.config import data_cfg as data_config
-from data.dataset import COCODataset
-
-def get_transform(train=True):
-    """
-    Returns albumentations transforms pipeline based on config
-    Args:
-        train (bool): If True, return transforms for training, else for validation
-    """
-    if train:
-        return A.Compose([
-            A.Resize(
-                height=data_config.img_size[0],
-                width=data_config.img_size[1]
-            ),
-            A.HorizontalFlip(p=data_config.flip_prob),
-            A.RandomBrightnessContrast(p=data_config.brightness_contrast_prob),
-            A.Rotate(limit=30, p=data_config.rotate_prob),
-            A.Normalize(
-                mean=data_config.mean,
-                std=data_config.std,
-            ),
-            ToTensorV2(),
-        ], bbox_params=A.BboxParams(
-               format='coco',
-               label_fields=['labels']
-           ), is_check_shapes=False)
-    else:
-        return A.Compose([
-            A.Resize(
-                height=data_config.img_size[0],
-                width=data_config.img_size[1]
-            ),
-            A.Normalize(
-                mean=data_config.mean,
-                std=data_config.std,
-            ),
-            ToTensorV2(),
-        ], bbox_params=A.BboxParams(
-               format='coco',
-               label_fields=['labels']
-           ), is_check_shapes=False)
-
-def get_data_loader(root_dir, ann_file, train=True):
-    """
-    Returns DataLoader for COCO dataset using config settings
-    Args:
-        root_dir (str): Directory with all the images
-        ann_file (str): Path to COCO annotation file
-        train (bool): If True, use training transforms
-    """
-    transform = get_transform(train=train)
-    dataset = COCODataset(root_dir, ann_file, transform=transform)
-    
-    # Update config with dataset information if not set
-    if data_config.categories is None:
-        data_config.categories = dataset.coco.loadCats(dataset.coco.getCatIds())
-        data_config.num_classes = len(data_config.categories)
-    
-    return DataLoader(
-        dataset,
-        batch_size=data_config.batch_size,
-        shuffle=train,
-        num_workers=data_config.num_workers,
-        collate_fn=collate_fn,
-        pin_memory=data_config.pin_memory
-    )
+from data.dataset import CustomVOCDataset
+from config.config import data_cfg
 
 def collate_fn(batch):
-    """Custom collate function for handling variable size images and annotations"""
-    return tuple(zip(*batch))
+    """
+    Custom collate function to handle varying number of bounding boxes
+    
+    Args:
+        batch (list): List of (image, bboxes, labels) tuples
+    
+    Returns:
+        tuple: Batched images, targets
+    """
+    images = [item[0] for item in batch]
+    targets = []
+    
+    for item in batch:
+        # Handle case of empty bboxes
+        if len(item[1]) == 0:
+            # Create an empty tensor for boxes with correct shape
+            target = {
+                'boxes': torch.zeros((0, 4), dtype=torch.float32),
+                'labels': torch.zeros((0,), dtype=torch.long)
+            }
+        else:
+            target = {
+                'boxes': torch.tensor(item[1], dtype=torch.float32),
+                'labels': torch.tensor(item[2], dtype=torch.long)
+            }
+        targets.append(target)
+    
+    return torch.stack(images), targets
 
-# Example usage with config
 def loaders():
-    """Helper function to get both train and validation loaders"""
-    train_loader = get_data_loader(
-        root_dir=data_config.train_root_dir,
-        ann_file=data_config.train_ann_file,
-        train=True
+    """
+    Create train, validation, and test data loaders
+    
+    Returns:
+        tuple: (train_loader, val_loader, test_loader)
+    """
+    # Create datasets
+    train_dataset = CustomVOCDataset(
+        data_dir=data_cfg.train_dir,
+        img_size=data_cfg.img_size,
+        mean=data_cfg.mean,
+        std=data_cfg.std,
+        categories=data_cfg.categories,
+        flip_prob=data_cfg.flip_prob,
+        brightness_contrast_prob=data_cfg.brightness_contrast_prob,
+        rotate_prob=data_cfg.rotate_prob
     )
     
-    val_loader = get_data_loader(
-        root_dir=data_config.val_root_dir,
-        ann_file=data_config.val_ann_file,
-        train=False
+    val_dataset = CustomVOCDataset(
+        data_dir=data_cfg.valid_dir,
+        img_size=data_cfg.img_size,
+        mean=data_cfg.mean,
+        std=data_cfg.std,
+        categories=data_cfg.categories
     )
     
-    test_loader = get_data_loader(
-        root_dir=data_config.test_root_dir,
-        ann_file=data_config.test_ann_file,
-        train=False
+    test_dataset = CustomVOCDataset(
+        data_dir=data_cfg.test_dir,
+        img_size=data_cfg.img_size,
+        mean=data_cfg.mean,
+        std=data_cfg.std,
+        categories=data_cfg.categories
+    )
+    
+    # Create data loaders
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=data_cfg.batch_size, 
+        shuffle=True,
+        num_workers=data_cfg.num_workers,
+        pin_memory=data_cfg.pin_memory,
+        collate_fn=collate_fn
+    )
+    
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=data_cfg.batch_size, 
+        shuffle=False,
+        num_workers=data_cfg.num_workers,
+        pin_memory=data_cfg.pin_memory,
+        collate_fn=collate_fn
+    )
+    
+    test_loader = DataLoader(
+        test_dataset, 
+        batch_size=data_cfg.batch_size, 
+        shuffle=False,
+        num_workers=data_cfg.num_workers,
+        pin_memory=data_cfg.pin_memory,
+        collate_fn=collate_fn
     )
     
     return train_loader, val_loader, test_loader

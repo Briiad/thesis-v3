@@ -5,12 +5,10 @@ from typing import Tuple, List
 @dataclass
 class DataConfig:
     # Dataset paths
-    train_root_dir: str = "dataset/train"
-    val_root_dir: str = "dataset/valid"
-    test_root_dir: str = "dataset/test"
-    train_ann_file: str = "dataset/train/_annotations.coco.json"
-    val_ann_file: str = "dataset/valid/_annotations.coco.json"
-    test_ann_file: str = "dataset/test/_annotations.coco.json"
+    root_dir: str = "dataset"
+    train_dir: str = "dataset/train"
+    valid_dir: str = "dataset/valid"
+    test_dir: str = "dataset/test"
     
     # Image settings
     img_size: Tuple[int, int] = (320, 320)
@@ -18,7 +16,7 @@ class DataConfig:
     std: Tuple[float, float, float] = (0.229, 0.224, 0.225)
     
     # Dataloader settings
-    batch_size: int = 16
+    batch_size: int = 6
     num_workers: int = 4
     pin_memory: bool = True
     
@@ -28,20 +26,26 @@ class DataConfig:
     rotate_prob: float = 0.3
     
     # Categories
-    categories: List[str] = field(default_factory=lambda: ["blackheads", "dark spot", "nodules", "papules", "pustules", "whiteheads"])
-    num_classes: int = 6
+    categories: List[str] = field(default_factory=lambda: [
+        "blackheads", "dark spot", "nodules", 
+        "papules", "pustules", "whiteheads"
+    ])
+    
+    # Number of classes (including background)
+    num_classes: int = 7  # 6 classes + 1 background
 
 @dataclass
 class TrainConfig:
     # Training settings
-    epochs: int = 10
+    epochs: int = 30
+    num_classes: int = 7
     learning_rate: float = 1e-3
     weight_decay: float = 0.0005
-    lr_scheduler_step: int = 30
+    lr_scheduler_step: int = 4
     lr_scheduler_gamma: float = 0.1
     
     # Checkpoint settings
-    checkpoint_dir: str = "checkpoints"
+    checkpoint_dir: str = "outputs/checkpoints"
     save_frequency: int = 5
 
 # Create default config instances

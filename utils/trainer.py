@@ -5,8 +5,10 @@ import os
 from tqdm import tqdm
 from torchmetrics.detection import MeanAveragePrecision
 from torchmetrics.detection import IntersectionOverUnion
+from torchmetrics.classification import MulticlassPrecision, MulticlassRecall, MulticlassF1Score
 import wandb
-from typing import Dict, List
+from typing import Dict
+from utils.customMetrics import calculate_map
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, test_loader, config):
@@ -35,6 +37,11 @@ class Trainer:
         # Setup metrics
         self.map_metric = MeanAveragePrecision()
         self.iou_metric = IntersectionOverUnion()
+        
+        # Assuming 7 classes - adjust num_classes as needed
+        self.precision_metric = MulticlassPrecision(num_classes=config.num_classes, average='macro').to(self.device)
+        self.recall_metric = MulticlassRecall(num_classes=config.num_classes, average='macro').to(self.device)
+        self.f1_metric = MulticlassF1Score(num_classes=config.num_classes, average='macro').to(self.device)
         
         # Create checkpoint directory if it doesn't exist
         os.makedirs(config.checkpoint_dir, exist_ok=True)
@@ -69,51 +76,114 @@ class Trainer:
         
         avg_loss = total_loss / len(self.train_loader)
         return {'train_loss': avg_loss}
+      
+    def _prepare_classification_inputs(self, predictions, targets):
+        """
+        Prepare inputs for classification metrics from object detection predictions.
+        
+        Args:
+            predictions (List[Dict]): Model predictions
+            targets (List[Dict]): Ground truth targets
+        
+        Returns:
+            Tuple of tensors for classification metrics
+        """
+        # Collect all predicted labels and true labels
+        all_pred_labels = []
+        all_true_labels = []
+        
+        for pred, target in zip(predictions, targets):
+            # If using the most confident prediction per image
+            if len(pred['labels']) > 0:
+                # Find the index of the highest scoring prediction
+                max_score_idx = pred['scores'].argmax()
+                all_pred_labels.append(pred['labels'][max_score_idx])
+            else:
+                # If no predictions, use a background/null class (typically 0)
+                all_pred_labels.append(torch.tensor(0).to(self.device))
+            
+            # Use the first/most confident label from ground truth if multiple
+            if len(target['labels']) > 0:
+                all_true_labels.append(target['labels'][0])
+            else:
+                # If no ground truth labels, use a background/null class
+                all_true_labels.append(torch.tensor(0).to(self.device))
+        
+        # Convert to tensor
+        pred_labels = torch.stack(all_pred_labels)
+        true_labels = torch.stack(all_true_labels)
+        
+        return pred_labels, true_labels
 
     def validate(self) -> Dict:
-        """Validate the model"""
+        """Validate the model using custom mAP implementation"""
         self.model.eval()
         
-        # Reset metrics before validation
-        self.map_metric.reset()
+        # Reset classification metrics
+        self.precision_metric.reset()
+        self.recall_metric.reset()
+        self.f1_metric.reset()
+        
+        all_preds = []
+        all_targets = []
         
         with torch.no_grad():
             for images, targets in tqdm(self.val_loader, desc='Validating'):
                 images = [image.to(self.device) for image in images]
-                
-                # Prepare targets in the correct format
                 targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
-                
-                # Get predictions in inference mode
                 predictions = self.model(images)
                 
-                # Ensure predictions are in the right format for torchmetrics
-                processed_preds = []
-                for pred in predictions:
-                    processed_pred = {
-                        'boxes': pred['boxes'],
-                        'labels': pred['labels'],
-                        'scores': pred.get('scores', torch.ones_like(pred['labels'], dtype=torch.float))
-                    }
-                    processed_preds.append(processed_pred)
-                
-                # Update metrics
-                self.map_metric.update(processed_preds, targets)
+                all_preds.extend(predictions)
+                all_targets.extend(targets)
         
-        # Compute and reset metrics
-        map_results = self.map_metric.compute()
-        self.map_metric.reset()
+        # Calculate mAP using custom implementation
+        map_results = calculate_map(all_preds, all_targets, num_classes=self.config.num_classes)
         
-        print(map_results)
+        # Calculate classification metrics
+        pred_labels, true_labels = self._prepare_classification_inputs(all_preds, all_targets)
+        self.precision_metric.update(pred_labels, true_labels)
+        self.recall_metric.update(pred_labels, true_labels)
+        self.f1_metric.update(pred_labels, true_labels)
+        
+        # Compute classification metrics
+        precision = self.precision_metric.compute()
+        recall = self.recall_metric.compute()
+        f1_score = self.f1_metric.compute()
+        
+        # Print validation results
+        print(f"Validation mAP: {map_results['map']}")
+        print(f"Validation mAP_50: {map_results['map_50']}")
+        print(f"Validation mAP_75: {map_results['map_75']}")
+        print(f"Validation Precision: {precision}")
+        print(f"Validation Recall: {recall}")
+        print(f"Validation F1 Score: {f1_score}")
+        
+        # Reset classification metrics
+        self.precision_metric.reset()
+        self.recall_metric.reset()
+        self.f1_metric.reset()
         
         return {
             'val_mAP': map_results['map'],
             'val_mAP_50': map_results['map_50'],
-            'val_mAP_75': map_results['map_75']
+            'val_mAP_75': map_results['map_75'],
+            'val_precision_per_class': precision.tolist(),
+            'val_recall_per_class': recall.tolist(),
+            'val_f1_score_per_class': f1_score.tolist(),
+            'val_precision_macro': precision.mean().item(),
+            'val_recall_macro': recall.mean().item(),
+            'val_f1_score_macro': f1_score.mean().item()
         }
+
     def test(self) -> Dict:
-        """Test the model"""
+        """Test the model using custom mAP implementation"""
         self.model.eval()
+        
+        # Reset classification metrics
+        self.precision_metric.reset()
+        self.recall_metric.reset()
+        self.f1_metric.reset()
+        
         all_preds = []
         all_targets = []
         
@@ -121,32 +191,42 @@ class Trainer:
             for images, targets in tqdm(self.test_loader, desc='Testing'):
                 images = [image.to(self.device) for image in images]
                 targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
-                
                 predictions = self.model(images)
+                
                 all_preds.extend(predictions)
                 all_targets.extend(targets)
         
-        # Calculate metrics
-        self.map_metric.update(all_preds, all_targets)
-        self.iou_metric.update(all_preds, all_targets)
+        # Calculate mAP using custom implementation
+        map_results = calculate_map(all_preds, all_targets, num_classes=self.config.num_classes)
         
-        map_results = self.map_metric.compute()
-        iou_results = self.iou_metric.compute()
+        # Calculate classification metrics
+        pred_labels, true_labels = self._prepare_classification_inputs(all_preds, all_targets)
+        self.precision_metric.update(pred_labels, true_labels)
+        self.recall_metric.update(pred_labels, true_labels)
+        self.f1_metric.update(pred_labels, true_labels)
         
-        self.map_metric.reset()
-        self.iou_metric.reset()
+        # Compute classification metrics
+        precision = self.precision_metric.compute()
+        recall = self.recall_metric.compute()
+        f1_score = self.f1_metric.compute()
+        
+        # Reset classification metrics
+        self.precision_metric.reset()
+        self.recall_metric.reset()
+        self.f1_metric.reset()
         
         return {
             'test_mAP': map_results['map'],
             'test_mAP_50': map_results['map_50'],
             'test_mAP_75': map_results['map_75'],
-            'test_precision': map_results['mar_100'],  # Using MAR as proxy for precision
-            'test_recall': map_results['mar_100'],     # Using MAR as proxy for recall
-            'test_f1': 2 * (map_results['mar_100'] * map_results['mar_100']) / 
-                      (map_results['mar_100'] + map_results['mar_100']), # F1 from precision/recall
-            'test_iou': iou_results
+            'test_precision_per_class': precision.tolist(),
+            'test_recall_per_class': recall.tolist(),
+            'test_f1_score_per_class': f1_score.tolist(),
+            'test_precision_macro': precision.mean().item(),
+            'test_recall_macro': recall.mean().item(),
+            'test_f1_score_macro': f1_score.mean().item()
         }
-
+    
     def save_checkpoint(self, epoch: int, metrics: Dict, is_best: bool = False):
         """Save model checkpoint"""
         checkpoint = {

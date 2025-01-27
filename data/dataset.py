@@ -1,126 +1,152 @@
 import os
+import xml.etree.ElementTree as ET
 import torch
-import numpy as np
-from PIL import Image
-from pycocotools.coco import COCO
+from torch.utils.data import Dataset
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+import cv2
+import numpy as np
 
-class COCODataset(torch.utils.data.Dataset):
-    def __init__(self, root_dir, ann_file, transform=None, target_transform=None):
+class CustomVOCDataset(Dataset):
+    def __init__(self, data_dir, img_size=(320, 320), 
+                 mean=(0.485, 0.456, 0.406), 
+                 std=(0.229, 0.224, 0.225), 
+                 categories=None,
+                 transform=None,
+                 flip_prob=0.5,
+                 brightness_contrast_prob=0.2,
+                 rotate_prob=0.3,
+                 num_classes=7):
         """
-        Args:
-            root_dir (str): Directory with all the images
-            ann_file (str): Path to COCO annotation file
-            transform (callable, optional): Optional transform to be applied on images
-            target_transform (callable, optional): Optional transform to be applied on annotations
+        Custom VOC-style Dataset for Object Detection with robust filename handling
         """
-        self.root_dir = root_dir
-        self.coco = COCO(ann_file)
-        self.ids = list(sorted(self.coco.imgs.keys()))
-        self.transform = transform
-        self.target_transform = target_transform
-
-    def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index
-        Returns:
-            tuple: (image, target) where target is a dictionary containing COCO format annotations
-        """
-        coco = self.coco
-        img_id = self.ids[index]
-        ann_ids = coco.getAnnIds(imgIds=img_id)
-        annotations = coco.loadAnns(ann_ids)
-
-        # Load image
-        img_info = coco.loadImgs(img_id)[0]
-        image_path = os.path.join(self.root_dir, img_info['file_name'])
-        image = np.array(Image.open(image_path).convert('RGB'))
+        self.data_dir = data_dir
+        self.img_size = img_size
+        self.num_classes = num_classes
         
-        def convert_bbox(bbox, width, height):
-            x, y, w, h = bbox
-            
-            # Convert to pascal_voc format
-            x_min = x / width
-            y_min = y / height
-            x_max = (x + w) / width
-            y_max = (y + h) / height
-            
-            # Clamp values to [0,1]
-            x_min = max(0, min(1, x_min))
-            y_min = max(0, min(1, y_min))
-            x_max = max(0, min(1, x_max))
-            y_max = max(0, min(1, y_max))
-            
-            return [x_min, y_min, x_max, y_max]
-
-        # Convert annotations to the format needed
-        boxes = []
-        labels = []
-        masks = []
-        mask_tensors = []
-        img_width = img_info['width']
-        img_height = img_info['height']
+        # Get all valid image and annotation pairs
+        self.valid_samples = self._get_valid_samples()
         
-        for ann in annotations:
-            if 'bbox' in ann and 'category_id' in ann:
-              bbox = convert_bbox(ann['bbox'], img_width, img_height)
-              if bbox[2] > bbox[0] and bbox[3] > bbox[1]:  # Valid box check
-                  boxes.append(bbox)
-                  labels.append(ann['category_id'])
-            labels.append(ann['category_id'])
+        # Categories
+        self.categories = categories or []
+        # Adjust indexing to start at 1 (0 is reserved for background)
+        self.cat_to_idx = {cat: i+1 for i, cat in enumerate(self.categories)}
+        
+        # Create transform
+        if transform is None:
+            self.transform = A.Compose([
+                A.Resize(height=img_size[0], width=img_size[1]),
+                A.Normalize(mean=mean, std=std),
+                ToTensorV2()
+            ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
+        else:
+            self.transform = transform
+    
+    def _get_valid_samples(self):
+        """
+        Find valid image-annotation pairs, handling complex filenames
+        """
+        valid_samples = []
+        for filename in os.listdir(self.data_dir):
+            # Strip any potential newline characters and whitespace
+            filename = filename.strip()
             
-            # Get segmentation mask if available
-            if 'segmentation' in ann and ann['segmentation']:
-              if isinstance(ann['segmentation'], list):
-                  # Polygon format - only create mask if polygon exists
-                  if ann['segmentation'][0]:
-                      mask = coco.annToMask(ann)
-                      mask_tensor = torch.from_numpy(mask).to(dtype=torch.uint8)
-                      mask_tensors.append(mask_tensor)
-              elif isinstance(ann['segmentation'], dict):
-                  # RLE format
-                  mask_tensor = torch.from_numpy(mask).to(dtype=torch.uint8)
-                  mask_tensors.append(mask_tensor)
-
-        # Convert to numpy arrays
-        boxes = np.array(boxes, dtype=np.float32)
-        labels = np.array(labels, dtype=np.int64)
-        masks = torch.stack(mask_tensors) if mask_tensors else torch.zeros(
-            (0, img_info['height'], img_info['width']), 
-            dtype=torch.uint8
-        )
-
-        target = {
-            'boxes': boxes,
-            'labels': labels,
-            'masks': masks,
-            'image_id': torch.tensor([img_id])
-        }
-
-        # Apply transforms
-        if self.transform is not None:
-            transformed = self.transform(
-                image=image,
-                bboxes=boxes,
-                labels=labels,
-                masks=masks.numpy() if masks.numel() > 0 else None
-            )
-            
-            image = transformed['image']
-            target['boxes'] = torch.as_tensor(transformed['bboxes'], dtype=torch.float32)
-            target['labels'] = torch.as_tensor(transformed['labels'], dtype=torch.int64)
-            # Fix mask handling
-            if masks.numel() > 0 and 'masks' in transformed:
-                target['masks'] = torch.as_tensor(transformed['masks'], dtype=torch.uint8)
-            else:
-                target['masks'] = torch.zeros((0, image.shape[1], image.shape[2]), dtype=torch.uint8)
-
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        return image, target
-
+            # Check for image files (multiple possible extensions)
+            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
+                base_name = os.path.splitext(filename)[0]
+                
+                # Try to find corresponding XML
+                xml_candidates = [
+                    f"{base_name}.xml",
+                    f"{base_name}_ann.xml",
+                    f"{base_name}.annotation.xml"
+                ]
+                
+                for xml_name in xml_candidates:
+                    xml_path = os.path.join(self.data_dir, xml_name)
+                    if os.path.exists(xml_path):
+                        valid_samples.append({
+                            'image': os.path.join(self.data_dir, filename),
+                            'annotation': xml_path
+                        })
+                        break
+        
+        return valid_samples
+    
     def __len__(self):
-        return len(self.ids)
+        return len(self.valid_samples)
+    
+    def _parse_annotation(self, xml_path):
+      """
+      Parse XML annotation file and normalize bounding boxes
+      """
+      try:
+          tree = ET.parse(xml_path)
+          root = tree.getroot()
+          
+          # Get image size for normalization
+          size = root.find('size')
+          img_width = int(float(size.find('width').text))
+          img_height = int(float(size.find('height').text))
+          
+          bboxes = []
+          labels = []
+          
+          for obj in root.findall('.//object'):
+              name = obj.find('name').text
+              
+              # Skip if category not in our list
+              if name not in self.categories:
+                  continue
+              
+              bbox = obj.find('bndbox')
+              xmin = int(float(bbox.find('xmin').text))
+              ymin = int(float(bbox.find('ymin').text))
+              xmax = int(float(bbox.find('xmax').text))
+              ymax = int(float(bbox.find('ymax').text))
+              
+              # Normalize coordinates
+              norm_xmin = max(0, min(xmin / img_width, 1.0))
+              norm_ymin = max(0, min(ymin / img_height, 1.0))
+              norm_xmax = max(0, min(xmax / img_width, 1.0))
+              norm_ymax = max(0, min(ymax / img_height, 1.0))
+              
+              bboxes.append([norm_xmin, norm_ymin, norm_xmax, norm_ymax])
+              labels.append(self.cat_to_idx[name])
+          
+          return bboxes, labels
+      except Exception as e:
+          print(f"Error parsing annotation {xml_path}: {e}")
+          return [], []
+    
+    def __getitem__(self, idx):
+        # Get image and annotation paths
+        sample = self.valid_samples[idx]
+        img_path = sample['image']
+        xml_path = sample['annotation']
+        
+        # Read image with error handling
+        try:
+            image = cv2.imread(img_path)
+            if image is None:
+                raise ValueError(f"Could not read image: {img_path}")
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        except Exception as e:
+            print(f"Error reading image {img_path}: {e}")
+            # Return a dummy sample or raise
+            return torch.zeros(3, self.img_size[0], self.img_size[1]), [], []
+        
+        # Parse annotations
+        bboxes, labels = self._parse_annotation(xml_path)
+        
+        if not bboxes:
+            print(f"No bounding boxes found for {img_path}")
+        
+        # Apply transformations
+        transformed = self.transform(
+            image=image,
+            bboxes=bboxes,
+            labels=labels
+        )
+        
+        return transformed['image'], transformed['bboxes'], transformed['labels']
