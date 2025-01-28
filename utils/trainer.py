@@ -1,8 +1,9 @@
 import torch
 from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 import os
 from tqdm import tqdm
+from torch.nn.utils import clip_grad_norm_
 from torchmetrics.detection import MeanAveragePrecision
 from torchmetrics.detection import IntersectionOverUnion
 from torchmetrics.classification import MulticlassPrecision, MulticlassRecall, MulticlassF1Score
@@ -28,10 +29,10 @@ class Trainer:
             lr=config.learning_rate,
             weight_decay=config.weight_decay
         )
-        self.scheduler = StepLR(
+        self.scheduler = CosineAnnealingLR(
             self.optimizer,
             step_size=config.lr_scheduler_step,
-            gamma=config.lr_scheduler_gamma
+            T_max=config.epochs
         )
         
         # Setup metrics
@@ -69,6 +70,7 @@ class Trainer:
             # Backward pass
             self.optimizer.zero_grad()
             losses.backward()
+            clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
             
             total_loss += losses.item()
