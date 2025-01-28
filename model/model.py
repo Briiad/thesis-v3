@@ -26,9 +26,12 @@ class CustomSSD(SSD):
     def compute_loss(self, targets, head_outputs, anchors, matched_idxs):
         """Custom loss combining Focal Loss and GIoU Loss"""
         # Classification loss (Focal Loss)
-        cls_logits = head_outputs["cls_logits"]
-        cls_targets = self._get_targets_from_matched_idxs(matched_idxs, targets)
-        cls_loss = FocalLoss()(cls_logits, cls_targets)
+        cls_logits = head_outputs["cls_logits"]  # Shape: [batch_size, num_anchors, num_classes]
+        cls_targets = self._get_targets_from_matched_idxs(matched_idxs, targets)  # Shape: [batch_size * num_anchors]
+        
+        # Fix: Reshape logits to [batch_size * num_anchors, num_classes]
+        cls_logits = cls_logits.view(-1, cls_logits.size(-1))
+        cls_loss = FocalLoss()(cls_logits, cls_targets)  # Now shapes are compatible
 
         # Regression loss (GIoU Loss)
         bbox_regression = head_outputs["bbox_regression"]
