@@ -53,7 +53,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
         backbone=backbone,
         num_classes=num_classes,
         anchor_generator=anchor_generator,
-        size=(640, 640),
+        size=(320, 320),
         head=head
     )
     return model
@@ -63,6 +63,6 @@ if __name__ == '__main__':
     model.eval() 
     
     # Test the model
-    image = torch.randn(1, 3, 640, 640)
+    image = torch.randn(1, 3, 320, 320)
     output = model(image)
     print("Output shape:", output)
