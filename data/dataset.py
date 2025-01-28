@@ -36,6 +36,8 @@ class CustomVOCDataset(Dataset):
         if transform is None:
             self.transform = A.Compose([
                 A.Resize(height=img_size[0], width=img_size[1]),
+                A.HorizontalFlip(p=0.5),
+                A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
                 A.Normalize(mean=mean, std=std),
                 ToTensorV2()
             ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
