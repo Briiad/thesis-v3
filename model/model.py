@@ -26,27 +26,35 @@ class CustomSSD(SSD):
     def compute_loss(self, targets, head_outputs, anchors, matched_idxs):
         """Custom loss combining Focal Loss and GIoU Loss"""
         # Classification loss (Focal Loss)
-        cls_logits = head_outputs["cls_logits"]  # Shape: [batch_size, num_anchors, num_classes]
-        cls_targets = self._get_targets_from_matched_idxs(matched_idxs, targets)  # Shape: [batch_size * num_anchors]
-        
-        # Fix: Reshape logits to [batch_size * num_anchors, num_classes]
-        cls_logits = cls_logits.view(-1, cls_logits.size(-1))
-        cls_loss = FocalLoss()(cls_logits, cls_targets)  # Now shapes are compatible
+        cls_logits = head_outputs["cls_logits"]
+        cls_targets = self._get_targets_from_matched_idxs(matched_idxs, targets)
+        cls_logits = cls_logits.view(-1, cls_logits.size(-1))  # Flatten logits
+        cls_loss = FocalLoss()(cls_logits, cls_targets)
 
         # Regression loss (GIoU Loss)
         bbox_regression = head_outputs["bbox_regression"]
         box_loss = torch.tensor(0.0, device=bbox_regression.device)
-        for targets_per_image, bbox_regression_per_image, matched_idxs_per_image in zip(
-            targets, bbox_regression, matched_idxs
+        
+        # Decode predicted offsets to boxes using anchors
+        for targets_per_image, bbox_regression_per_image, matched_idxs_per_image, anchors_per_image in zip(
+            targets, bbox_regression, matched_idxs, anchors  # Added anchors_per_image
         ):
             if matched_idxs_per_image.numel() == 0:
                 continue
 
-            matched_gt_boxes = targets_per_image["boxes"][matched_idxs_per_image.clip(min=0)]
-            box_loss += generalized_box_iou_loss(
-                bbox_regression_per_image[matched_idxs_per_image >= 0],
-                matched_gt_boxes
-            ).mean()
+            # Get positive indices and corresponding anchors/predictions
+            positive_mask = matched_idxs_per_image >= 0
+            pos_anchors = anchors_per_image[positive_mask]
+            pos_offsets = bbox_regression_per_image[positive_mask]
+
+            # Decode predicted boxes from offsets and anchors
+            pred_boxes = self.box_coder.decode_single(pos_offsets, pos_anchors)
+
+            # Get matched ground-truth boxes
+            matched_gt_boxes = targets_per_image["boxes"][matched_idxs_per_image.clip(min=0)[positive_mask]]
+
+            # Compute GIoU loss between decoded predictions and GT
+            box_loss += generalized_box_iou_loss(pred_boxes, matched_gt_boxes).mean()
 
         return {
             "classification": cls_loss * 0.8,
