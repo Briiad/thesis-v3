@@ -16,7 +16,7 @@ class DataConfig:
     std: Tuple[float, float, float] = (0.229, 0.224, 0.225)
     
     # Dataloader settings
-    batch_size: int = 6
+    batch_size: int = 2
     num_workers: int = 4
     pin_memory: bool = True
     
