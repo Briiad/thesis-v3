@@ -50,6 +50,17 @@ class CustomSSD(SSD):
             "bbox_regression": box_loss * 1.2 / len(targets)
         }
 
+    def _get_targets_from_matched_idxs(self, matched_idxs, targets):
+        # Reimplementation of the parent method to create classification targets
+        labels = []
+        for targets_per_image, matched_idxs_per_image in zip(targets, matched_idxs):
+            gt_classes = targets_per_image["labels"].to(dtype=torch.int64)
+            # Assign labels: 0 for background (matched_idxs < 0), else corresponding class
+            labels_per_image = gt_classes[matched_idxs_per_image.clip(min=0)]
+            labels_per_image[matched_idxs_per_image < 0] = 0  # Background class
+            labels.append(labels_per_image)
+        return torch.cat(labels, dim=0)
+
 class CustomBackboneWithFPN(nn.Module):
     def __init__(self, pretrained=True):
         super().__init__()
