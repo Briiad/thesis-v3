@@ -6,7 +6,7 @@ from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
 from torchmetrics.detection import MeanAveragePrecision
 from torchmetrics.detection import IntersectionOverUnion
-from torchmetrics.classification import MulticlassPrecision, MulticlassRecall, MulticlassF1Score
+from torchmetrics.classification import MulticlassPrecision, MulticlassRecall, MulticlassF1Score, MulticlassConfusionMatrix
 import wandb
 from typing import Dict
 from utils.customMetrics import calculate_map
@@ -22,6 +22,9 @@ class Trainer:
         # Setup device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = self.model.to(self.device)
+        
+        for param in self.model.backbone.parameters():
+            param.requires_grad = True
         
         # Setup optimizer and scheduler
         self.optimizer = Adam(
@@ -42,6 +45,9 @@ class Trainer:
         self.precision_metric = MulticlassPrecision(num_classes=config.num_classes, average='macro').to(self.device)
         self.recall_metric = MulticlassRecall(num_classes=config.num_classes, average='macro').to(self.device)
         self.f1_metric = MulticlassF1Score(num_classes=config.num_classes, average='macro').to(self.device)
+        self.confusion_matrix_metric = MulticlassConfusionMatrix(
+            num_classes=config.num_classes
+        ).to(self.device)
         
         # Create checkpoint directory if it doesn't exist
         os.makedirs(config.checkpoint_dir, exist_ok=True)
@@ -124,6 +130,7 @@ class Trainer:
         self.precision_metric.reset()
         self.recall_metric.reset()
         self.f1_metric.reset()
+        self.confusion_matrix_metric.reset()
         
         all_preds = []
         all_targets = []
@@ -145,29 +152,35 @@ class Trainer:
         self.precision_metric.update(pred_labels, true_labels)
         self.recall_metric.update(pred_labels, true_labels)
         self.f1_metric.update(pred_labels, true_labels)
+        self.confusion_matrix_metric.update(pred_labels, true_labels)
         
         # Compute classification metrics
         precision = self.precision_metric.compute()
         recall = self.recall_metric.compute()
         f1_score = self.f1_metric.compute()
+        confusion_matrix = self.confusion_matrix_metric.compute().cpu().tolist()
         
         # Print validation results
         print(f"Validation mAP: {map_results['map']}")
-        print(f"Validation mAP_50: {map_results['map_50']}")
-        print(f"Validation mAP_75: {map_results['map_75']}")
         print(f"Validation Precision: {precision}")
         print(f"Validation Recall: {recall}")
         print(f"Validation F1 Score: {f1_score}")
+        
+        wandb.log({"val_confusion_matrix": wandb.plot.confusion_matrix(
+            preds=pred_labels.cpu().numpy(),
+            y_true=true_labels.cpu().numpy(),
+            class_names=[f"Class_{i}" for i in range(self.config.num_classes)]
+        )})
         
         # Reset classification metrics
         self.precision_metric.reset()
         self.recall_metric.reset()
         self.f1_metric.reset()
+        self.confusion_matrix_metric.reset()
         
         return {
             'val_mAP': map_results['map'],
-            'val_mAP_50': map_results['map_50'],
-            'val_mAP_75': map_results['map_75'],
+            'val_confusion_matrix': confusion_matrix,
             'val_precision_per_class': precision.tolist(),
             'val_recall_per_class': recall.tolist(),
             'val_f1_score_per_class': f1_score.tolist(),
@@ -184,6 +197,7 @@ class Trainer:
         self.precision_metric.reset()
         self.recall_metric.reset()
         self.f1_metric.reset()
+        self.confusion_matrix_metric.reset()
         
         all_preds = []
         all_targets = []
@@ -205,21 +219,23 @@ class Trainer:
         self.precision_metric.update(pred_labels, true_labels)
         self.recall_metric.update(pred_labels, true_labels)
         self.f1_metric.update(pred_labels, true_labels)
+        self.confusion_matrix_metric.update(pred_labels, true_labels)
         
         # Compute classification metrics
         precision = self.precision_metric.compute()
         recall = self.recall_metric.compute()
         f1_score = self.f1_metric.compute()
+        confusion_matrix = self.confusion_matrix_metric.compute().cpu().tolist()
         
         # Reset classification metrics
         self.precision_metric.reset()
         self.recall_metric.reset()
         self.f1_metric.reset()
+        self.confusion_matrix_metric.reset()
         
         return {
             'test_mAP': map_results['map'],
-            'test_mAP_50': map_results['map_50'],
-            'test_mAP_75': map_results['map_75'],
+            'test_confusion_matrix': confusion_matrix,
             'test_precision_per_class': precision.tolist(),
             'test_recall_per_class': recall.tolist(),
             'test_f1_score_per_class': f1_score.tolist(),

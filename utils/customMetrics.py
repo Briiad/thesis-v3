@@ -1,108 +1,59 @@
 import torch
 import numpy as np
-import tqdm
-from typing import Dict
+from typing import Dict, List
 
-def calculate_iou(boxes1, boxes2):
+def calculate_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
     """
     Calculate Intersection over Union (IoU) between two sets of boxes
-    
-    Args:
-        boxes1 (torch.Tensor): First set of bounding boxes (N, 4)
-        boxes2 (torch.Tensor): Second set of bounding boxes (M, 4)
-    
-    Returns:
-        torch.Tensor: IoU matrix of shape (N, M)
     """
-    # Convert [x_min, y_min, x_max, y_max] format
-    # Compute coordinates of intersection rectangles
     x1 = torch.max(boxes1[:, 0].unsqueeze(1), boxes2[:, 0].unsqueeze(0))
     y1 = torch.max(boxes1[:, 1].unsqueeze(1), boxes2[:, 1].unsqueeze(0))
     x2 = torch.min(boxes1[:, 2].unsqueeze(1), boxes2[:, 2].unsqueeze(0))
     y2 = torch.min(boxes1[:, 3].unsqueeze(1), boxes2[:, 3].unsqueeze(0))
     
-    # Compute areas of intersection
     intersection = torch.clamp(x2 - x1, min=0) * torch.clamp(y2 - y1, min=0)
     
-    # Compute areas of boxes
     area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
     area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
     
-    # Compute union
     union = area1.unsqueeze(1) + area2.unsqueeze(0) - intersection
-    
-    # Compute IoU
-    iou = intersection / (union + 1e-8)
-    
-    return iou
+    return intersection / (union + 1e-8)
 
-def compute_average_precision(recalls, precisions):
+def compute_average_precision(recalls: np.ndarray, precisions: np.ndarray) -> float:
     """
-    Compute Average Precision using the VOC method
-    
-    Args:
-        recalls (np.ndarray): Recall values
-        precisions (np.ndarray): Precision values
-    
-    Returns:
-        float: Average Precision
+    Compute Average Precision using PASCAL VOC method
     """
-    # Convert inputs to numpy arrays if they aren't already
-    recalls = np.array(recalls)
-    precisions = np.array(precisions)
-    
-    # Add sentinel values for proper interpolation
     recalls = np.concatenate(([0.], recalls, [1.]))
     precisions = np.concatenate(([0.], precisions, [0.]))
     
-    # Compute the maximum precision for recall r and all recalls greater than r
     for i in range(len(precisions)-2, -1, -1):
         precisions[i] = max(precisions[i], precisions[i+1])
     
-    # Find indices where recall changes
     i = np.where(recalls[1:] != recalls[:-1])[0]
-    
-    # Calculate area under precision-recall curve
-    ap = np.sum((recalls[i + 1] - recalls[i]) * precisions[i + 1])
-    
-    return ap
+    return np.sum((recalls[i + 1] - recalls[i]) * precisions[i + 1])
 
-def calculate_map(predictions, ground_truth, num_classes, iou_threshold=0.5):
+def calculate_map(
+    predictions: List[Dict],
+    ground_truth: List[Dict],
+    num_classes: int,
+    iou_threshold: float = 0.5  # PASCAL VOC standard
+) -> Dict[str, float]:
     """
-    Calculate Mean Average Precision (mAP)
-    
-    Args:
-        predictions (List[Dict]): List of prediction dictionaries
-        ground_truth (List[Dict]): List of ground truth dictionaries
-        num_classes (int): Number of classes
-        iou_threshold (float): IoU threshold for positive match
-    
-    Returns:
-        Dict: mAP metrics
+    Calculate PASCAL VOC-style mAP@0.5 (no multi-threshold calculations)
     """
-    # Ensure inputs are on the same device and convert to list if needed
-    if not isinstance(predictions, list):
-        predictions = [predictions]
-    if not isinstance(ground_truth, list):
-        ground_truth = [ground_truth]
-    
-    # Containers for AP of each class
     class_aps = []
     
-    # Iterate through each class
-    for cls in range(1, num_classes + 1):  # Assuming class indices start from 1
+    for cls in range(1, num_classes + 1):
         class_preds = []
         class_gts = []
         
-        # Collect predictions and ground truth for this class
         for pred, gt in zip(predictions, ground_truth):
-            # Filter predictions and ground truth for current class
             pred_mask = pred['labels'] == cls
             gt_mask = gt['labels'] == cls
             
             class_preds.append({
                 'boxes': pred['boxes'][pred_mask],
-                'scores': pred['scores'][pred_mask] if 'scores' in pred else torch.ones_like(pred['labels'][pred_mask], dtype=torch.float)
+                'scores': pred['scores'][pred_mask] if 'scores' in pred else torch.ones_like(pred['labels'][pred_mask])
             })
             
             class_gts.append({
@@ -111,95 +62,36 @@ def calculate_map(predictions, ground_truth, num_classes, iou_threshold=0.5):
             })
         
         # Compute AP for this class
-        class_ap = compute_class_ap(class_preds, class_gts, iou_threshold)
-        class_aps.append(class_ap)
-    
-    # Compute mAP metrics
-    valid_aps = [ap for ap in class_aps if not np.isnan(ap)]
-    map_metrics = {
-        'map': np.mean(valid_aps) if valid_aps else 0.0,
-        'map_50': np.mean(valid_aps) if valid_aps else 0.0,  # Same as standard mAP@0.5
-        'map_75': np.mean([ap for ap in valid_aps if ap >= 0.75]) if valid_aps else 0.0  # mAP at stricter IoU
-    }
-    
-    return map_metrics
+        all_pred_boxes = torch.cat([p['boxes'] for p in class_preds]) if any(len(p['boxes']) > 0 for p in class_preds) else torch.empty((0, 4))
+        all_pred_scores = torch.cat([p['scores'] for p in class_preds]) if any(len(p['scores']) > 0 for p in class_preds) else torch.empty(0)
+        all_gt_boxes = torch.cat([g['boxes'] for g in class_gts]) if any(len(g['boxes']) > 0 for g in class_gts) else torch.empty((0, 4))
 
-def compute_class_ap(class_preds, class_gts, iou_threshold=0.5):
-    """
-    Compute Average Precision for a single class
-    
-    Args:
-        class_preds (List[Dict]): Predictions for a specific class
-        class_gts (List[Dict]): Ground truth for a specific class
-        iou_threshold (float): IoU threshold for positive match
-    
-    Returns:
-        float: Average Precision for the class
-    """
-    # Collect all predictions across images
-    all_pred_boxes = []
-    all_pred_scores = []
-    all_gt_boxes = []
-    
-    for preds, gts in zip(class_preds, class_gts):
-        all_pred_boxes.append(preds['boxes'])
-        all_pred_scores.append(preds['scores'])
-        all_gt_boxes.append(gts['boxes'])
-    
-    # Concatenate predictions and ground truth
-    all_pred_boxes = torch.cat(all_pred_boxes) if len(all_pred_boxes) > 0 else torch.empty((0, 4))
-    all_pred_scores = torch.cat(all_pred_scores) if len(all_pred_scores) > 0 else torch.empty(0)
-    all_gt_boxes = torch.cat(all_gt_boxes) if len(all_gt_boxes) > 0 else torch.empty((0, 4))
-    
-    # If no predictions or ground truth, return 0
-    if len(all_pred_boxes) == 0 or len(all_gt_boxes) == 0:
-        return 0.0
-    
-    # Sort predictions by confidence score
-    sorted_indices = torch.argsort(all_pred_scores, descending=True)
-    sorted_pred_boxes = all_pred_boxes[sorted_indices]
-    
-    # Track matched ground truth
-    gt_matched = torch.zeros(len(all_gt_boxes), dtype=torch.bool)
-    
-    # Initialize precision and recall lists
-    precisions = []
-    recalls = []
-    
-    tp = 0  # True positives
-    fp = 0  # False positives
-    
-    # Process each prediction
-    for pred_box in sorted_pred_boxes:
-        # Compute IoU with all ground truth boxes
-        ious = calculate_iou(pred_box.unsqueeze(0), all_gt_boxes)
-        ious = ious.squeeze(0)
+        if len(all_pred_boxes) == 0 or len(all_gt_boxes) == 0:
+            class_aps.append(0.0)
+            continue
+
+        sorted_indices = torch.argsort(all_pred_scores, descending=True)
+        sorted_pred_boxes = all_pred_boxes[sorted_indices]
+        gt_matched = torch.zeros(len(all_gt_boxes), dtype=torch.bool)
         
-        # Find best match
-        max_iou, max_idx = torch.max(ious, dim=0)
+        tp, fp = 0, 0
+        precisions, recalls = [], []
         
-        # Check if match is valid
-        if max_iou >= iou_threshold and not gt_matched[max_idx]:
-            gt_matched[max_idx] = True
-            tp += 1
-        else:
-            fp += 1
+        for pred_box in sorted_pred_boxes:
+            ious = calculate_iou(pred_box.unsqueeze(0), all_gt_boxes).squeeze(0)
+            max_iou, max_idx = torch.max(ious, dim=0)
+            
+            if max_iou >= iou_threshold and not gt_matched[max_idx]:
+                gt_matched[max_idx] = True
+                tp += 1
+            else:
+                fp += 1
+                
+            precisions.append(tp / (tp + fp + 1e-8))
+            recalls.append(tp / (len(all_gt_boxes) + 1e-8))
         
-        # Compute precision and recall
-        precision = tp / (tp + fp)
-        recall = tp / len(all_gt_boxes)
-        
-        precisions.append(precision)
-        recalls.append(recall)
+        ap = compute_average_precision(np.array(recalls), np.array(precisions))
+        class_aps.append(ap)
     
-    # Convert to numpy arrays
-    precisions = np.array(precisions)
-    recalls = np.array(recalls)
-    
-    # Compute Average Precision
-    if len(precisions) > 0:
-        ap = compute_average_precision(recalls, precisions)
-    else:
-        ap = 0.0
-    
-    return ap
+    valid_aps = [ap for ap in class_aps if not np.isnan(ap)]
+    return {'map': np.mean(valid_aps) if valid_aps else 0.0}
