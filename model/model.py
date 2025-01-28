@@ -23,19 +23,8 @@ class CustomSSD(SSD):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-    def compute_loss(self, targets, head_outputs, anchors):
+    def compute_loss(self, targets, head_outputs, anchors, matched_idxs):
         """Custom loss combining Focal Loss and GIoU Loss"""
-        matched_idxs = []
-        for anchors_per_image, targets_per_image in zip(anchors, targets):
-            if targets_per_image["boxes"].numel() == 0:
-                matched_idxs.append(
-                    torch.full((anchors_per_image.size(0),), -1, dtype=torch.int64)
-                )
-                continue
-            
-            match_quality_matrix = self.box_similarity(targets_per_image["boxes"], anchors_per_image)
-            matched_idxs.append(self.proposal_matcher(match_quality_matrix))
-
         # Classification loss (Focal Loss)
         cls_logits = head_outputs["cls_logits"]
         cls_targets = self._get_targets_from_matched_idxs(matched_idxs, targets)
