@@ -91,7 +91,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
     backbone = CustomBackboneWithFPN(pretrained=pretrained_backbone)
     
     anchor_generator = AnchorGenerator(
-        sizes=((8, 16, 32), (16, 32, 64), (32, 64, 128), (64, 128, 256), (128, 256, 512)),
+        sizes=((4, 8, 16), (8, 16, 32), (16, 32, 64), (32, 64, 128), (64, 128, 256)),
         aspect_ratios=((0.5, 1.0, 2.0),) * 5
     )
     
@@ -107,7 +107,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
         anchor_generator=anchor_generator,
         size=(640, 640),
         head=head,
-        score_thresh=0.01  # Lower threshold for small objects
+        score_thresh=0.01
     )
 
 if __name__ == '__main__':
@@ -117,11 +117,3 @@ if __name__ == '__main__':
     output = model(image)
     print("Output shapes:", {k: v.shape for k, v in output[0].items()})
   
-if __name__ == '__main__':
-    model = create_ssd_model(num_classes=7)
-    model.eval() 
-    
-    # Test the model
-    image = torch.randn(1, 3, 640, 640)
-    output = model(image)
-    print("Output shape:", output)
