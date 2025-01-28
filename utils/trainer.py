@@ -31,7 +31,6 @@ class Trainer:
         )
         self.scheduler = CosineAnnealingLR(
             self.optimizer,
-            step_size=config.lr_scheduler_step,
             T_max=config.epochs
         )
         
