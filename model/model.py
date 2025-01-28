@@ -59,7 +59,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
         backbone=backbone,
         num_classes=num_classes,
         anchor_generator=anchor_generator,
-        size=(320, 320),
+        size=(640, 640),
         head=head
     )
     
