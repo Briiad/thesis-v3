@@ -11,7 +11,7 @@ class DataConfig:
     test_dir: str = "dataset/test"
     
     # Image settings
-    img_size: Tuple[int, int] = (320, 320)
+    img_size: Tuple[int, int] = (640, 640)
     mean: Tuple[float, float, float] = (0.485, 0.456, 0.406)
     std: Tuple[float, float, float] = (0.229, 0.224, 0.225)
     
@@ -39,7 +39,7 @@ class TrainConfig:
     # Training settings
     epochs: int = 30
     num_classes: int = 7
-    learning_rate: float = 1e-3
+    learning_rate: float = 1e-5
     weight_decay: float = 0.0005
     lr_scheduler_step: int = 4
     lr_scheduler_gamma: float = 0.1

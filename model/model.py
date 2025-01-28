@@ -23,7 +23,7 @@ class CustomBackboneWithFPN(nn.Module):
         in_channels_list = [16, 24, 32, 96, 1280]  # Adjusted for layer4's 96 channels
         self.fpn = FeaturePyramidNetwork(
             in_channels_list=in_channels_list,
-            out_channels=1280
+            out_channels=256
         )
 
     def forward(self, x):
@@ -40,11 +40,11 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
     backbone = CustomBackboneWithFPN(pretrained=pretrained_backbone)
     
     anchor_generator = AnchorGenerator(
-        sizes=((8, 16, 32), (16, 32, 64), (32, 64, 128), (64, 128, 256), (128, 256, 512)),
+        sizes=((4, 8, 16), (8, 16, 32), (16, 32, 64), (32, 64, 128), (64, 128, 256)),
         aspect_ratios=((0.5, 1.0, 2.0),) * 5
     )
     head = SSDHead(
-        in_channels=[1280] * 5,  # FPN outputs all have 1280 channels
+        in_channels=[256] * 5,  # FPN outputs all have 1280 channels
         num_anchors=anchor_generator.num_anchors_per_location(),
         num_classes=num_classes
     )
@@ -53,7 +53,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
         backbone=backbone,
         num_classes=num_classes,
         anchor_generator=anchor_generator,
-        size=(320, 320),
+        size=(640, 640),
         head=head
     )
     return model
@@ -63,6 +63,6 @@ if __name__ == '__main__':
     model.eval() 
     
     # Test the model
-    image = torch.randn(1, 3, 320, 320)
+    image = torch.randn(1, 3, 640, 640)
     output = model(image)
     print("Output shape:", output)
