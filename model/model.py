@@ -4,73 +4,7 @@ import torch.nn.functional as F
 import torchvision
 from torchvision.models.detection.ssd import SSDHead, SSD
 from torchvision.models.detection.anchor_utils import AnchorGenerator
-from torchvision.ops import generalized_box_iou_loss
 from torchvision.ops.feature_pyramid_network import FeaturePyramidNetwork
-
-class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2.0):
-        super().__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-
-    def forward(self, inputs, targets):
-        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
-        pt = torch.exp(-ce_loss)
-        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
-        return focal_loss.mean()
-
-class CustomSSD(SSD):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-    def compute_loss(self, targets, head_outputs, anchors, matched_idxs):
-        """Custom loss combining Focal Loss and GIoU Loss"""
-        # Classification loss (Focal Loss)
-        cls_logits = head_outputs["cls_logits"]
-        cls_targets = self._get_targets_from_matched_idxs(matched_idxs, targets)
-        cls_logits = cls_logits.view(-1, cls_logits.size(-1))  # Flatten logits
-        cls_loss = FocalLoss()(cls_logits, cls_targets)
-
-        # Regression loss (GIoU Loss)
-        bbox_regression = head_outputs["bbox_regression"]
-        box_loss = torch.tensor(0.0, device=bbox_regression.device)
-        
-        # Decode predicted offsets to boxes using anchors
-        for targets_per_image, bbox_regression_per_image, matched_idxs_per_image, anchors_per_image in zip(
-            targets, bbox_regression, matched_idxs, anchors  # Added anchors_per_image
-        ):
-            if matched_idxs_per_image.numel() == 0:
-                continue
-
-            # Get positive indices and corresponding anchors/predictions
-            positive_mask = matched_idxs_per_image >= 0
-            pos_anchors = anchors_per_image[positive_mask]
-            pos_offsets = bbox_regression_per_image[positive_mask]
-
-            # Decode predicted boxes from offsets and anchors
-            pred_boxes = self.box_coder.decode_single(pos_offsets, pos_anchors)
-
-            # Get matched ground-truth boxes
-            matched_gt_boxes = targets_per_image["boxes"][matched_idxs_per_image.clip(min=0)[positive_mask]]
-
-            # Compute GIoU loss between decoded predictions and GT
-            box_loss += generalized_box_iou_loss(pred_boxes, matched_gt_boxes).mean()
-
-        return {
-            "classification": cls_loss * 0.8,
-            "bbox_regression": box_loss * 1.2 / len(targets)
-        }
-
-    def _get_targets_from_matched_idxs(self, matched_idxs, targets):
-        # Reimplementation of the parent method to create classification targets
-        labels = []
-        for targets_per_image, matched_idxs_per_image in zip(targets, matched_idxs):
-            gt_classes = targets_per_image["labels"].to(dtype=torch.int64)
-            # Assign labels: 0 for background (matched_idxs < 0), else corresponding class
-            labels_per_image = gt_classes[matched_idxs_per_image.clip(min=0)]
-            labels_per_image[matched_idxs_per_image < 0] = 0  # Background class
-            labels.append(labels_per_image)
-        return torch.cat(labels, dim=0)
 
 class CustomBackboneWithFPN(nn.Module):
     def __init__(self, pretrained=True):
@@ -112,13 +46,11 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
         num_classes=num_classes
     )
 
-    return CustomSSD(
+    return SSD(
         backbone=backbone,
-        num_classes=num_classes,
         anchor_generator=anchor_generator,
-        size=(640, 640),
         head=head,
-        score_thresh=0.01
+        iou_thresh=0.2
     )
 
 if __name__ == '__main__':
