@@ -38,7 +38,8 @@ class CustomVOCDataset(Dataset):
                 A.Resize(height=img_size[0], width=img_size[1]),
                 A.HorizontalFlip(p=flip_prob),
                 A.RandomBrightnessContrast(p=brightness_contrast_prob),
-                A.RandomRotate90(p=rotate_prob),
+                A.Rotate(limit=15, p=rotate_prob),  # Allow slight rotations
+                A.CLAHE(p=0.2),
                 A.Normalize(mean=mean, std=std),
                 ToTensorV2()
             ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
