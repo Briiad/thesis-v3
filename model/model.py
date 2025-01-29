@@ -15,7 +15,10 @@ class BiFPN(nn.Module):
         self.w2 = nn.Parameter(torch.ones(3))
         
         # Top-down pathway
-        self.td_conv1 = nn.Conv2d(feature_channels[-1], out_channels, 1)
+        self.td_conv1 = nn.Sequential(
+            nn.Conv2d(feature_channels[-1], out_channels, 1),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1, groups=out_channels)  # Depthwise
+        )
         self.td_conv2 = nn.Conv2d(feature_channels[-2], out_channels, 1)
         self.td_conv3 = nn.Conv2d(feature_channels[-3], out_channels, 1)
         
@@ -50,7 +53,7 @@ class CustomBackboneWithBiFPN(nn.Module):
         self.layer4 = nn.Sequential(*backbone[7:14])  # 96
         self.layer5 = nn.Sequential(*backbone[14:])  # 1280
 
-        self.bifpn = BiFPN(feature_channels=[16, 24, 32, 96, 1280], out_channels=128)
+        self.bifpn = BiFPN(feature_channels=[16, 24, 32, 96, 1280], out_channels=256)
 
     def forward(self, x):
         enc0 = self.layer1(x)
@@ -69,8 +72,8 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
     
     # ======== Key Modification 4: Optimized Anchors ========
     anchor_generator = AnchorGenerator(
-        sizes=((16, 32, 64), (32, 64, 128), (64, 128, 256)),  # For 3 BiFPN levels
-        aspect_ratios=((0.5, 1.0, 2.0),) * 3  # Match number of BiFPN levels
+        sizes=((8, 16, 32), (16, 32, 64), (32, 64, 128)),  # For 3 BiFPN levels
+        aspect_ratios=((0.25, 0.5, 1.0, 2.0, 4.0),) * 3  # Match number of BiFPN levels
     )
     
     # ======== Key Modification 5: Adjusted SSD Head ========
