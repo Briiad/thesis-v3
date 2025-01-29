@@ -36,7 +36,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
     backbone = CustomBackboneWithFPN(pretrained=pretrained_backbone)
     
     anchor_generator = AnchorGenerator(
-        sizes=((2, 4, 8), (4, 8, 16), (8, 16, 32), (16, 32, 64), (32, 64, 128)),
+        sizes=((0.5, 1, 2), (2, 4, 8), (4, 8, 16), (8, 16, 32), (16, 32, 64)),
         aspect_ratios=((0.5, 1.0, 2.0),) * 5
     )
     
@@ -53,8 +53,8 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
         iou_thresh=0.2,
         num_classes=num_classes,
         size=(640, 640),
-        nms_thresh=0.3,
-        score_thresh=0.01,
+        nms_thresh=0.4,
+        score_thresh=0.05,
         detections_per_img=200
     )
 
