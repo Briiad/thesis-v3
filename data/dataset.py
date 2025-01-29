@@ -36,7 +36,6 @@ class CustomVOCDataset(Dataset):
         if transform is None:
             self.transform = A.Compose([
                 A.Resize(height=img_size[0], width=img_size[1]),
-                A.RandomCrop(height=img_size[0], width=img_size[1]),
                 A.HorizontalFlip(p=flip_prob),
                 A.RandomBrightnessContrast(p=brightness_contrast_prob),
                 A.RandomScale(p=rotate_prob),

@@ -1,7 +1,0 @@
-{"time":"2025-01-23T20:42:30.0807781+07:00","level":"INFO","msg":"stream: starting","core version":"0.19.4","symlink path":"E:\\Projects\\thesis-v3\\wandb\\run-20250123_204229-wby4vgd3\\logs\\debug-core.log"}
-{"time":"2025-01-23T20:42:32.6259441+07:00","level":"INFO","msg":"created new stream","id":"wby4vgd3"}
-{"time":"2025-01-23T20:42:32.6264483+07:00","level":"INFO","msg":"stream: started","id":"wby4vgd3"}
-{"time":"2025-01-23T20:42:32.6264483+07:00","level":"INFO","msg":"handler: started","stream_id":"wby4vgd3"}
-{"time":"2025-01-23T20:42:32.6264483+07:00","level":"INFO","msg":"sender: started","stream_id":"wby4vgd3"}
-{"time":"2025-01-23T20:42:32.6264483+07:00","level":"INFO","msg":"writer: Do: started","stream_id":"wby4vgd3"}
-{"time":"2025-01-23T20:42:33.0695766+07:00","level":"INFO","msg":"Starting system monitor"}
