@@ -5,7 +5,6 @@ import os
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
 from torchmetrics.detection import MeanAveragePrecision
-from torchmetrics.detection import IntersectionOverUnion
 from torchmetrics.classification import MulticlassPrecision, MulticlassRecall, MulticlassF1Score, MulticlassConfusionMatrix
 import wandb
 from typing import Dict
@@ -41,7 +40,6 @@ class Trainer:
         
         # Setup metrics
         self.map_metric = MeanAveragePrecision()
-        self.iou_metric = IntersectionOverUnion()
         
         # Assuming 7 classes - adjust num_classes as needed
         self.precision_metric = MulticlassPrecision(num_classes=config.num_classes, average='macro').to(self.device)
