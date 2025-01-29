@@ -53,7 +53,7 @@ class CustomBackboneWithBiFPN(nn.Module):
         self.layer4 = nn.Sequential(*backbone[7:14])  # 96
         self.layer5 = nn.Sequential(*backbone[14:])  # 1280
 
-        self.bifpn = BiFPN(feature_channels=[16, 24, 32, 96, 1280], out_channels=256)
+        self.bifpn = BiFPN(feature_channels=[16, 24, 32, 96, 1280], out_channels=128)
 
     def forward(self, x):
         enc0 = self.layer1(x)
