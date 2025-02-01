@@ -44,21 +44,36 @@ class MobileNetV3LargeBackbone(nn.Module):
     def __init__(self, pretrained=True):
         super().__init__()
         backbone = torchvision.models.mobilenet_v3_large(pretrained=pretrained).features
-        self.layer1 = nn.Sequential(backbone[0], backbone[1])   # 16
-        self.layer2 = backbone[2:4]                             # 24
-        self.layer3 = backbone[4:7]                             # 40
-        self.layer4 = backbone[7:13]                            # 112
-        self.layer5 = backbone[13:]                             # 1280
         
-        self.bifpn = BiFPN(feature_channels=[16, 24, 40, 112, 1280], out_channels=128)
+        # Correct layer slicing for MobileNetV3-Large
+        self.layer1 = nn.Sequential(backbone[0], backbone[1])   # out: 16
+        self.layer2 = backbone[2:4]                             # out: 24
+        self.layer3 = backbone[4:7]                             # out: 40
+        self.layer4 = backbone[7:13]                            # out: 112
+        self.layer5 = nn.Sequential(
+            backbone[13],       # out: 160
+            backbone[14],       # out: 160
+            backbone[15],       # out: 160
+            backbone[16]        # out: 960 (final features)
+        )
+        
+        # Update BiFPN input channels to match actual outputs
+        self.bifpn = BiFPN(
+            feature_channels=[16, 24, 40, 112, 960],  # Changed last channel to 960
+            out_channels=128
+        )
 
     def forward(self, x):
-        enc0 = self.layer1(x)
-        enc1 = self.layer2(enc0)
-        enc2 = self.layer3(enc1)
-        enc3 = self.layer4(enc2)
-        enc4 = self.layer5(enc3)
-        return self.bifpn({'0': enc0, '1': enc1, '2': enc2, '3': enc3, '4': enc4})
+        enc0 = self.layer1(x)   # 16 channels
+        enc1 = self.layer2(enc0)  # 24
+        enc2 = self.layer3(enc1)  # 40
+        enc3 = self.layer4(enc2)  # 112
+        enc4 = self.layer5(enc3)  # 960 (not 1280!)
+        
+        return self.bifpn({
+            '0': enc0, '1': enc1, '2': enc2, 
+            '3': enc3, '4': enc4
+        })
 
 def create_mobilenetv3_large_ssd(num_classes):
     anchor_generator = AnchorGenerator(
