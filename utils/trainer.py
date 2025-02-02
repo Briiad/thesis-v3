@@ -38,7 +38,7 @@ class Trainer:
         self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
             T_max=20,
-            eta_min=1e-4
+            eta_min=1e-5
         )
         # self.scheduler = StepLR(
         #     optimizer=self.optimizer,
