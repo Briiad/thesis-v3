@@ -188,7 +188,7 @@ class Trainer:
         
         return {
             'val_mAP': map_results['map'],
-            'val_mAP_torch': map_torch_results,
+            'val_mAP_torch': map_torch_results['map'].item(),
             'val_confusion_matrix': confusion_matrix,
             'val_precision_per_class': precision.tolist(),
             'val_recall_per_class': recall.tolist(),
@@ -222,6 +222,7 @@ class Trainer:
         
         # Calculate mAP using custom implementation
         map_results = calculate_map(all_preds, all_targets, num_classes=self.config.num_classes)
+        map_torch_results = self.map_metric(all_preds, all_targets)
         
         # Calculate classification metrics
         pred_labels, true_labels = self._prepare_classification_inputs(all_preds, all_targets)
@@ -237,6 +238,7 @@ class Trainer:
         confusion_matrix = self.confusion_matrix_metric.compute().cpu().tolist()
         
         # Reset classification metrics
+        self.map_metric.reset()
         self.precision_metric.reset()
         self.recall_metric.reset()
         self.f1_metric.reset()
@@ -244,6 +246,7 @@ class Trainer:
         
         return {
             'test_mAP': map_results['map'],
+            'test_mAP_torch': map_torch_results['map'].item(),
             'test_confusion_matrix': confusion_matrix,
             'test_precision_per_class': precision.tolist(),
             'test_recall_per_class': recall.tolist(),
