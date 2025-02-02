@@ -1,6 +1,6 @@
 import torch
 from torch.optim import Adam
-from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingLR
+from torch.optim.lr_scheduler import LRScheduler
 import os
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -31,7 +31,11 @@ class Trainer:
             lr=config.learning_rate,
             weight_decay=config.weight_decay
         )
-        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=config.epochs)
+        self.scheduler = LRScheduler(
+            optimizer=self.optimizer,
+            step_size=config.lr_scheduler_step,
+            gamma=config.lr_scheduler_gamma
+        )
         
         # Setup metrics
         self.map_metric = MeanAveragePrecision()
