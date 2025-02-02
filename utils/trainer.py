@@ -287,15 +287,6 @@ class Trainer:
         wandb.init(project="object_detection", config=self.config)
         
         for epoch in range(self.config.epochs):
-            if val_metrics['val_mAP'] > self.best_map:
-                self.early_stopping_counter = 0  # Reset counter
-            else:
-                self.early_stopping_counter += 1
-
-            if self.early_stopping_counter >= self.early_stopping_patience:
-                print("Early stopping triggered")
-                break
-              
             # Training
             train_metrics = self.train_one_epoch(epoch)
             
@@ -308,6 +299,15 @@ class Trainer:
             # Log metrics
             metrics = {**train_metrics, **val_metrics}
             wandb.log(metrics)
+            
+            if val_metrics['val_mAP'] > self.best_map:
+                self.early_stopping_counter = 0  # Reset counter
+            else:
+                self.early_stopping_counter += 1
+
+            if self.early_stopping_counter >= self.early_stopping_patience:
+                print("Early stopping triggered")
+                break
             
             # Save checkpoint if it's the best model
             if val_metrics['val_mAP'] > self.best_map:
