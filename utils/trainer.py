@@ -1,6 +1,6 @@
 import torch
-from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
+from torch.optim import Adam, AdamW
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 import os
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -26,15 +26,15 @@ class Trainer:
             param.requires_grad = True
         
         # Setup optimizer and scheduler
-        self.optimizer = Adam(
+        self.optimizer = AdamW(
             self.model.parameters(),
             lr=config.learning_rate,
             weight_decay=config.weight_decay
         )
-        self.scheduler = StepLR(
+        self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
-            step_size=config.lr_scheduler_step,
-            gamma=config.lr_scheduler_gamma
+            T_max=50,
+            eta_min=1e-6
         )
         
         # Setup metrics
