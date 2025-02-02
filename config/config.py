@@ -39,8 +39,8 @@ class TrainConfig:
     # Training settings
     epochs: int = 150
     num_classes: int = 7
-    learning_rate: float = 8e-4
-    weight_decay: float = 5e-4
+    learning_rate: float = 3e-4
+    weight_decay: float = 1e-3
     lr_scheduler_step: int = 30
     lr_scheduler_gamma: float = 0.3
     

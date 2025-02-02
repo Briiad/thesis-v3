@@ -37,7 +37,7 @@ class Trainer:
         )
         self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
-            T_max=50,
+            T_max=100,
             eta_min=1e-6
         )
         
@@ -85,7 +85,7 @@ class Trainer:
             # Backward pass
             self.optimizer.zero_grad()
             losses.backward()
-            clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            clip_grad_norm_(self.model.parameters(), max_norm=0.6)
             self.optimizer.step()
             
             total_loss += losses.item()
