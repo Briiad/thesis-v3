@@ -36,7 +36,7 @@ def calculate_map(
     predictions: List[Dict],
     ground_truth: List[Dict],
     num_classes: int,
-    iou_threshold: float = 0.5
+    iou_threshold: float = 0.25
 ) -> Dict[str, float]:
     """
     Calculate PASCAL VOC-style mAP@0.5 (no multi-threshold calculations)
