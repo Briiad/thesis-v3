@@ -37,10 +37,10 @@ class DataConfig:
 @dataclass
 class TrainConfig:
     # Training settings
-    epochs: int = 150
+    epochs: int = 100
     num_classes: int = 7
     learning_rate: float = 3e-4
-    weight_decay: float = 1e-3
+    weight_decay: float = 1e-4
     lr_scheduler_step: int = 30
     lr_scheduler_gamma: float = 0.3
     

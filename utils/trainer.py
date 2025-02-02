@@ -1,6 +1,6 @@
 import torch
 from torch.optim import Adam, AdamW
-from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlateau
 import os
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -37,9 +37,14 @@ class Trainer:
         )
         self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
-            T_max=100,
-            eta_min=1e-6
+            T_max=20,
+            eta_min=1e-4
         )
+        # self.scheduler = StepLR(
+        #     optimizer=self.optimizer,
+        #     step_size=config.lr_scheduler_step,
+        #     gamma=config.lr_scheduler_gamma
+        # )
         
         # Setup metrics
         self.map_metric = MeanAveragePrecision(
@@ -307,15 +312,6 @@ class Trainer:
             
             # Regular checkpoint saving
             self.save_checkpoint(epoch, metrics)
-            
-            if val_metrics['val_mAP'] > self.best_map:
-                self.early_stopping_counter = 0  # Reset counter
-            else:
-                self.early_stopping_counter += 1
-
-            if self.early_stopping_counter >= self.early_stopping_patience:
-                print("Early stopping triggered")
-                break
         
         # Final test
         test_metrics = self.test()
