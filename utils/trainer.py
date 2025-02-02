@@ -300,6 +300,14 @@ class Trainer:
             metrics = {**train_metrics, **val_metrics}
             wandb.log(metrics)
             
+            # Save checkpoint if it's the best model
+            if val_metrics['val_mAP'] > self.best_map:
+                self.best_map = val_metrics['val_mAP']
+                self.save_checkpoint(epoch, metrics, is_best=True)
+            
+            # Regular checkpoint saving
+            self.save_checkpoint(epoch, metrics)
+            
             if val_metrics['val_mAP'] > self.best_map:
                 self.early_stopping_counter = 0  # Reset counter
             else:
@@ -308,14 +316,6 @@ class Trainer:
             if self.early_stopping_counter >= self.early_stopping_patience:
                 print("Early stopping triggered")
                 break
-            
-            # Save checkpoint if it's the best model
-            if val_metrics['val_mAP'] > self.best_map:
-                self.best_map = val_metrics['val_mAP']
-                self.save_checkpoint(epoch, metrics, is_best=True)
-            
-            # Regular checkpoint saving
-            self.save_checkpoint(epoch, metrics)
         
         # Final test
         test_metrics = self.test()
