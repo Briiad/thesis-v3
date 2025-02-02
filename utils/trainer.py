@@ -42,6 +42,7 @@ class Trainer:
             iou_type='bbox',
             box_format='xywh',
             average='macro',
+            class_metrics=True,
             iou_thresholds=[0.2, 0.25, 0.3, 0.35, 0.4],
             rec_thresholds=[0.2, 0.25, 0.3, 0.35, 0.4]
         ).to(self.device)
