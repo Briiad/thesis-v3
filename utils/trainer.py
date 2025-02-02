@@ -18,6 +18,9 @@ class Trainer:
         self.test_loader = test_loader
         self.config = config
         
+        self.early_stopping_counter = 0
+        self.early_stopping_patience = 15
+        
         # Setup device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = self.model.to(self.device)
@@ -29,7 +32,8 @@ class Trainer:
         self.optimizer = AdamW(
             self.model.parameters(),
             lr=config.learning_rate,
-            weight_decay=config.weight_decay
+            weight_decay=config.weight_decay,
+            fused=True
         )
         self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
@@ -283,6 +287,15 @@ class Trainer:
         wandb.init(project="object_detection", config=self.config)
         
         for epoch in range(self.config.epochs):
+            if val_metrics['val_mAP'] > self.best_map:
+                self.early_stopping_counter = 0  # Reset counter
+            else:
+                self.early_stopping_counter += 1
+
+            if self.early_stopping_counter >= self.early_stopping_patience:
+                print("Early stopping triggered")
+                break
+              
             # Training
             train_metrics = self.train_one_epoch(epoch)
             
