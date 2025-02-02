@@ -16,7 +16,7 @@ class DataConfig:
     std: Tuple[float, float, float] = (0.229, 0.224, 0.225)
     
     # Dataloader settings
-    batch_size: int = 8
+    batch_size: int = 16
     num_workers: int = 6
     pin_memory: bool = True
     
@@ -39,7 +39,7 @@ class TrainConfig:
     # Training settings
     epochs: int = 150
     num_classes: int = 7
-    learning_rate: float = 1e-4
+    learning_rate: float = 3e-4
     weight_decay: float = 5e-4
     lr_scheduler_step: int = 30
     lr_scheduler_gamma: float = 0.3
