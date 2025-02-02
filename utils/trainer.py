@@ -32,13 +32,17 @@ class Trainer:
             weight_decay=config.weight_decay
         )
         self.scheduler = LRScheduler(
-            optimizer=self.optimizer,
-            step_size=config.lr_scheduler_step,
-            gamma=config.lr_scheduler_gamma
+            optimizer=self.optimizer
         )
         
         # Setup metrics
-        self.map_metric = MeanAveragePrecision()
+        self.map_metric = MeanAveragePrecision(
+            iou_type='bbox',
+            box_format='xywh',
+            average='macro',
+            iou_thresholds=0.2,
+            rec_thresholds=0.2
+        ).to(self.device)
         
         # Assuming 7 classes - adjust num_classes as needed
         self.precision_metric = MulticlassPrecision(num_classes=config.num_classes, average='macro').to(self.device)
@@ -145,6 +149,7 @@ class Trainer:
         
         # Calculate mAP using custom implementation
         map_results = calculate_map(all_preds, all_targets, num_classes=self.config.num_classes)
+        map_torch_results = self.map_metric(all_preds, all_targets)
         
         # Calculate classification metrics
         pred_labels, true_labels = self._prepare_classification_inputs(all_preds, all_targets)
@@ -161,6 +166,7 @@ class Trainer:
         
         # Print validation results
         print(f"Validation mAP: {map_results['map']}")
+        print(f"Validation mAP (Torch): {map_torch_results}")
         print(f"Validation Precision: {precision}")
         print(f"Validation Recall: {recall}")
         print(f"Validation F1 Score: {f1_score}")
@@ -172,6 +178,7 @@ class Trainer:
         )})
         
         # Reset classification metrics
+        self.map_metric.reset()
         self.precision_metric.reset()
         self.recall_metric.reset()
         self.f1_metric.reset()
@@ -179,6 +186,7 @@ class Trainer:
         
         return {
             'val_mAP': map_results['map'],
+            'val_mAP_torch': map_torch_results,
             'val_confusion_matrix': confusion_matrix,
             'val_precision_per_class': precision.tolist(),
             'val_recall_per_class': recall.tolist(),
