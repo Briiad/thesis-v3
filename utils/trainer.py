@@ -1,6 +1,6 @@
 import torch
 from torch.optim import Adam
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import StepLR
 import os
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -31,8 +31,10 @@ class Trainer:
             lr=config.learning_rate,
             weight_decay=config.weight_decay
         )
-        self.scheduler = LRScheduler(
-            optimizer=self.optimizer
+        self.scheduler = StepLR(
+            optimizer=self.optimizer,
+            step_size=config.lr_scheduler_step,
+            gamma=config.lr_scheduler_gamma
         )
         
         # Setup metrics
