@@ -31,9 +31,11 @@ class Trainer:
             lr=config.learning_rate,
             weight_decay=config.weight_decay
         )
-        self.scheduler = CosineAnnealingLR(
+        self.scheduler = OneCycleLR(
             self.optimizer,
-            T_max=config.epochs
+            max_lr=config.learning_rate,
+            steps_per_epoch=len(self.train_loader),
+            epochs=config.epochs
         )
         
         # Setup metrics

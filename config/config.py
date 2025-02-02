@@ -37,7 +37,7 @@ class DataConfig:
 @dataclass
 class TrainConfig:
     # Training settings
-    epochs: int = 70
+    epochs: int = 200
     num_classes: int = 7
     learning_rate: float = 1e-4
     weight_decay: float = 1e-4
