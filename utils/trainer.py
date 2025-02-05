@@ -37,14 +37,9 @@ class Trainer:
         )
         self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
-            T_max=20,
-            eta_min=1e-5
+            T_max=config.epochs,
+            eta_min=1e-6
         )
-        # self.scheduler = StepLR(
-        #     optimizer=self.optimizer,
-        #     step_size=config.lr_scheduler_step,
-        #     gamma=config.lr_scheduler_gamma
-        # )
         
         # Setup metrics
         self.map_metric = MeanAveragePrecision(
