@@ -162,7 +162,7 @@ class HybridDetectionModel(nn.Module):
 
     def forward(self, images, targets=None):
         # Feature extraction
-        features = self.backbone(images.tensors)
+        features = self.backbone(images)
         
         # Head outputs
         cls_logits, bbox_reg, centerness = self.head(features)
