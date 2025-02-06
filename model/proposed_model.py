@@ -16,11 +16,11 @@ class MobileNetV3BiFPN(nn.Module):
         self.layer2 = backbone[2:4]                             # 24
         self.layer3 = backbone[4:7]                             # 40
         self.layer4 = backbone[7:13]                            # 112
-        self.layer5 = backbone[13:]                             # 1280
+        self.layer5 = backbone[13:]                             # 960
         
         # BiFPN Configuration
         self.bifpn = nn.ModuleList([
-            BiFPNBlock(in_channels=[24, 40, 112, 1280], out_channels=128)
+            BiFPNBlock(in_channels=[24, 40, 112, 960], out_channels=128)
         ])
         
     def forward(self, x):
