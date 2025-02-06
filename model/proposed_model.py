@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config.config import data_cfg
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.mobilenetv3 import MobileNet_V3_Large_Weights, mobilenet_v3_large
 from torchvision.ops import generalized_box_iou, batched_nms, box_iou
@@ -357,5 +356,5 @@ class HybridDetectionModel(nn.Module):
         return (alpha_factor * loss).mean()
 
 if __name__ == '__main__':
-    model = create_proposed_model()
+    model = create_proposed_model(num_classes=7)
     print(f"Parameters: {sum(p.numel() for p in model.parameters())/1e6:.2f}M")
