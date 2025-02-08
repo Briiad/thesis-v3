@@ -53,7 +53,7 @@ class CustomBackboneWithBiFPN(nn.Module):
         self.layer4 = nn.Sequential(*backbone[7:14])  # 96
         self.layer5 = nn.Sequential(*backbone[14:])  # 1280
 
-        self.bifpn = BiFPN(feature_channels=[16, 24, 32, 96, 1280], out_channels=512)
+        self.bifpn = BiFPN(feature_channels=[16, 24, 32, 96, 1280], out_channels=128)
 
     def forward(self, x):
         enc0 = self.layer1(x)
@@ -78,7 +78,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
     
     # ======== Key Modification 5: Adjusted SSD Head ========
     head = SSDHead(
-        in_channels=[512] * 3,  # Matches BiFPN output channels
+        in_channels=[128] * 3,  # Matches BiFPN output channels
         num_anchors=anchor_generator.num_anchors_per_location(),
         num_classes=num_classes
     )
@@ -92,7 +92,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
         size=(640, 640),
         nms_thresh=0.25,
         score_thresh=0.01,  # Lower threshold for better recall
-        detections_per_img=200
+        detections_per_img=50
     )
 
 if __name__ == '__main__':

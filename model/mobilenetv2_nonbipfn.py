@@ -13,8 +13,8 @@ class MobileNetV2SSDBackbone(nn.Module):
         # stage2: features[7:14] (output channels ~320)
         # stage3: features[14:]  (output channels ~1280)
         self.stage1 = nn.Sequential(*backbone[:7])
-        self.stage2 = nn.Sequential(*backbone[7:14])
-        self.stage3 = nn.Sequential(*backbone[14:])
+        self.stage2 = nn.Sequential(*backbone[7:18])  # Instead of 7:14
+        self.stage3 = nn.Sequential(*backbone[18:])
         # Convert each stage’s output to 256 channels (instead of 128)
         self.conv1x1_1 = nn.Conv2d(32, 256, kernel_size=1)
         self.conv1x1_2 = nn.Conv2d(320, 256, kernel_size=1)
@@ -38,15 +38,16 @@ class MobileNetV2SSDBackbone(nn.Module):
 
     def forward(self, x):
         f1 = self.stage1(x)
+        print("f1 shape:", f1.shape)  # Should be [B, 32, H, W]
         f2 = self.stage2(f1)
+        print("f2 shape:", f2.shape)  # Should be [B, 320, H, W], but it's 96
         f3 = self.stage3(f2)
+        print("f3 shape:", f3.shape)  # Should be [B, 1280, H, W]
         p1 = self.conv1x1_1(f1)
-        p2 = self.conv1x1_2(f2)
+        p2 = self.conv1x1_2(f2)  # ERROR happens here!
         p3 = self.conv1x1_3(f3)
-        p1 = self.extra_conv1(p1)
-        p2 = self.extra_conv2(p2)
-        p3 = self.extra_conv3(p3)
         return {'0': p1, '1': p2, '2': p3}
+
 
 def create_mobilenetv2_ssd(num_classes):
     anchor_generator = AnchorGenerator(

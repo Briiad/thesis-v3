@@ -73,7 +73,7 @@ def create_mobilenetv3_large_ssd(num_classes):
         iou_thresh=0.15,
         nms_thresh=0.25,
         score_thresh=0.01,
-        detections_per_img=200
+        detections_per_img=100
     )
 
 if __name__ == '__main__':
