@@ -97,6 +97,7 @@ def create_ssd_model(num_classes, pretrained_backbone=True):
 
 if __name__ == '__main__':
     model = create_ssd_model(num_classes=7)
+    print(f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
     model.eval()
     image = torch.randn(1, 3, 640, 640)
     output = model(image)

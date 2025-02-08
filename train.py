@@ -10,7 +10,7 @@ from utils.trainer import Trainer
 if __name__ == '__main__':
   freeze_support()
   # Create model and get dataloaders
-  model = create_proposed_model(num_classes=data_cfg.num_classes)
+  model = create_ssd_model(num_classes=data_cfg.num_classes)
   train_loader, val_loader, test_loader = loaders()
 
   # Initialize trainer
