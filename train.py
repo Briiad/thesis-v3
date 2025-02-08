@@ -1,6 +1,6 @@
 from multiprocessing import freeze_support
 
-from model.mobilenetv2 import create_ssd_model
+from model.mobilenetv2_nonbipfn import create_mobilenetv2_ssd
 from model.mobilenetv3_large import create_mobilenetv3_large_ssd
 from model.proposed_model import create_proposed_model
 from data.loader import loaders
@@ -10,7 +10,7 @@ from utils.trainer import Trainer
 if __name__ == '__main__':
   freeze_support()
   # Create model and get dataloaders
-  model = create_ssd_model(num_classes=data_cfg.num_classes)
+  model = create_mobilenetv2_ssd(num_classes=data_cfg.num_classes)
   train_loader, val_loader, test_loader = loaders()
 
   # Initialize trainer
