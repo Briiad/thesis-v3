@@ -1,7 +1,7 @@
 import torch
 from torchvision import transforms
 from loader import get_loaders
-from model import LightCNN
+from model import EnhancedLightCNN
 from trainer import Trainer
 import config
 
@@ -31,7 +31,7 @@ def main():
         transform_val=val_transform
     )
     
-    model = LightCNN(num_classes=config.NUM_CLASSES).to(device)
+    model = EnhancedLightCNN(num_classes=config.NUM_CLASSES).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE)
     
     # For multiclass classification
