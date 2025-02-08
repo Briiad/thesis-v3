@@ -1,5 +1,5 @@
 # Dataset and training configuration
-DATA_DIR = "./ml/dataset"       # Path to the folder containing the images
+DATA_DIR = "./dataset"       # Path to the folder containing the images
 BATCH_SIZE = 8
 NUM_EPOCHS = 25
 LEARNING_RATE = 1e-3
@@ -14,4 +14,4 @@ STD  = [0.229, 0.224, 0.225]
 # Number of classes (acne levels 0,1,2,3)
 NUM_CLASSES = 4
 
-MODEL_SAVE_PATH = "./ml/saved_models/light_cnn.pth"
+MODEL_SAVE_PATH = "./saved_models/light_cnn.pth"
