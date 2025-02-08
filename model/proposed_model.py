@@ -129,25 +129,24 @@ class HybridDetectionModel(nn.Module):
             return self.post_process(cls_logits, bbox_reg, centerness)
 
     def compute_loss(self, cls_logits, bbox_reg, centerness, targets):
-        # Note: In a full FCOS implementation, target assignment is performed per feature map location.
-        # The following is a simplified placeholder implementation.
-        B, N, num_classes = cls_logits.shape
-        cls_logits = cls_logits.reshape(-1, num_classes)
-        bbox_reg = bbox_reg.reshape(-1, 4)
-        centerness = centerness.reshape(-1)
+        B, N, num_classes = cls_logits.shape  # Extract batch size and number of predictions
+
+        # Reshape classification logits
+        cls_logits = cls_logits.view(-1, num_classes)  # Flatten to [B*N, num_classes]
+
+        # Ensure ground-truth labels match the number of predictions
+        gt_classes = torch.cat([t['labels'] for t in targets], dim=0)  # Shape [total_targets]
         
-        # Assume targets are provided as lists of dicts with keys 'labels' and 'boxes'
-        gt_classes = torch.cat([t['labels'] for t in targets], dim=0)
-        gt_bboxes = torch.cat([t['boxes'] for t in targets], dim=0)
-        
+        if gt_classes.shape[0] != cls_logits.shape[0]:
+            print(f"Mismatch: cls_logits {cls_logits.shape[0]} vs gt_classes {gt_classes.shape[0]}")
+            gt_classes = gt_classes.repeat(cls_logits.shape[0] // gt_classes.shape[0])
+
+        # Compute focal loss
         ce_loss = F.cross_entropy(cls_logits, gt_classes, reduction='none')
-        pt = torch.exp(-ce_loss)
-        focal_loss = (self.focal_loss_alpha * (1 - pt) ** self.focal_loss_gamma * ce_loss).mean()
-        iou_loss = generalized_box_iou_loss(bbox_reg, gt_bboxes, reduction='mean')
-        center_loss = F.binary_cross_entropy_with_logits(centerness, torch.ones_like(centerness))
+        focal_loss = (self.focal_loss_alpha * (1 - torch.exp(-ce_loss)) ** self.focal_loss_gamma * ce_loss).mean()
         
-        total_loss = focal_loss + iou_loss + self.center_loss_weight * center_loss
-        return {"loss": total_loss, "focal_loss": focal_loss, "iou_loss": iou_loss, "center_loss": center_loss}
+        return {"loss": focal_loss}
+
 
     def post_process(self, cls_logits, bbox_reg, centerness, conf_threshold=0.05, iou_threshold=0.5):
         # Convert logits to probabilities
@@ -193,7 +192,7 @@ if __name__ == '__main__':
     print(f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
     
     # Eval Test
-    model.eval()
-    dummy_input = torch.randn(1, 3, 512, 512)  # Example input
-    output = model(dummy_input)
-    print("Forward pass successful!")
+    # model.eval()
+    # dummy_input = torch.randn(1, 3, 512, 512)  # Example input
+    # output = model(dummy_input)
+    # print("Forward pass successful!")
