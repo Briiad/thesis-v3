@@ -93,7 +93,7 @@ def create_mobilenetv3_fcos(num_classes):
         anchor_generator=anchor_generator,
         head=head,
         score_thresh=0.01,
-        nms_thresh=0.25,
+        nms_thresh=0.4,
         max_size=640,
         min_size=640,
         detections_per_img=200
