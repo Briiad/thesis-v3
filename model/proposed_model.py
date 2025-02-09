@@ -26,13 +26,18 @@ class BiFPN(nn.Module):
 
     def forward(self, features):
         c2, c3, c4, c5, c6 = features.values()
-        p6 = self.td_conv1(c6)
-        p5 = self.td_conv2(c5) + nn.functional.interpolate(p6, scale_factor=2)
-        p4 = self.td_conv3(c4) + nn.functional.interpolate(p5, scale_factor=2)
         
+        # Top-down pathway with weights
+        w1 = torch.softmax(self.w1, 0)
+        p6 = self.td_conv1(c6)
+        p5 = (w1[0] * self.td_conv2(c5) + w1[1] * nn.functional.interpolate(p6, scale_factor=2)) / (w1.sum() + 1e-4)
+        p4 = (w1[0] * self.td_conv3(c4) + w1[1] * nn.functional.interpolate(p5, scale_factor=2)) / (w1.sum() + 1e-4)
+        
+        # Bottom-up pathway with weights
+        w2 = torch.softmax(self.w2, 0)
         n4 = self.bu_conv1(p4)
-        n5 = self.bu_conv2(p5 + nn.functional.max_pool2d(n4, kernel_size=2))
-        n6 = self.bu_conv2(p6 + nn.functional.max_pool2d(n5, kernel_size=2))
+        n5 = (w2[0] * self.bu_conv2(p5) + w2[1] * nn.functional.max_pool2d(n4, kernel_size=2)) / (w2.sum() + 1e-4)
+        n6 = (w2[0] * self.bu_conv2(p6) + w2[1] * nn.functional.max_pool2d(n5, kernel_size=2)) / (w2.sum() + 1e-4)
         
         return {'0': n4, '1': n5, '2': n6}
 
@@ -54,11 +59,11 @@ class MobileNetV3LargeBackbone(nn.Module):
         
         self.bifpn = BiFPN(
             feature_channels=[16, 24, 40, 112, 960],
-            out_channels=128
+            out_channels=256
         )
         
         # Required attribute for FCOS: the number of output channels per feature map
-        self.out_channels = 128
+        self.out_channels = 256
 
     def forward(self, x):
         enc0 = self.layer1(x)
@@ -78,9 +83,9 @@ def create_mobilenetv3_fcos(num_classes):
     )
     # Initialize FCOSHead with the appropriate number of anchors (which should be 1).
     head = FCOSHead(
-        in_channels=128,
+        in_channels=256,
         num_anchors=anchor_generator.num_anchors_per_location()[0],
-        num_classes=num_classes
+        num_classes=num_classes,
     )
     model = FCOS(
         backbone=backbone,
@@ -88,10 +93,11 @@ def create_mobilenetv3_fcos(num_classes):
         anchor_generator=anchor_generator,
         head=head,
         score_thresh=0.01,
-        nms_thresh=0.25,
+        nms_thresh=0.4,
         max_size=640,
         min_size=640,
-        detections_per_img=100
+        detections_per_img=200,
+        center_sampling_radius=2.5
     )
     return model
 

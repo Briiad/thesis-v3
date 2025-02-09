@@ -16,8 +16,8 @@ class DataConfig:
     std: Tuple[float, float, float] = (0.229, 0.224, 0.225)
     
     # Dataloader settings
-    batch_size: int = 8
-    num_workers: int = 6
+    batch_size: int = 16
+    num_workers: int = 4
     pin_memory: bool = True
     
     # Augmentation probabilities
@@ -27,7 +27,7 @@ class DataConfig:
     
     # Categories
     categories: List[str] = field(default_factory=lambda: [
-        "blackheads", "dark spot", "nodules", 
+        "__background__", "blackheads", "dark spot", "nodules", 
         "papules", "pustules", "whiteheads"
     ])
     
@@ -40,7 +40,7 @@ class TrainConfig:
     epochs: int = 100
     num_classes: int = 7
     learning_rate: float =0.001
-    weight_decay: float = 5e-4
+    weight_decay: float = 0.0001
     lr_scheduler_step: int = 25
     lr_scheduler_gamma: float = 0.1
     
