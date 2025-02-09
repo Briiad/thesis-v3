@@ -43,7 +43,7 @@ def calculate_map(
     """
     class_aps = []
     
-    for cls in range(num_classes):
+    for cls in range(1, num_classes + 1):
         class_preds = []
         class_gts = []
         

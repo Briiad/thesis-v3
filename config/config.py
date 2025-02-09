@@ -27,7 +27,7 @@ class DataConfig:
     
     # Categories
     categories: List[str] = field(default_factory=lambda: [
-        "__background__","blackheads", "dark spot", "nodules", 
+        "__background__", "blackheads", "dark spot", "nodules", 
         "papules", "pustules", "whiteheads"
     ])
     
@@ -39,8 +39,8 @@ class TrainConfig:
     # Training settings
     epochs: int = 100
     num_classes: int = 7
-    learning_rate: float = 1e-3
-    weight_decay: float = 1e-4
+    learning_rate: float = 0.005
+    weight_decay: float = 5e-3
     lr_scheduler_step: int = 30
     lr_scheduler_gamma: float = 0.3
     
