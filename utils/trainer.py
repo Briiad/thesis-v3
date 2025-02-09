@@ -77,7 +77,6 @@ class Trainer:
 
             # Forward pass
             loss_dict = self.model(images, targets)
-            print("Loss keys:", loss_dict.keys())  # Debugging: Check loss components
             losses = sum(loss for loss in loss_dict.values())
 
             # Backward pass
