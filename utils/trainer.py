@@ -1,5 +1,5 @@
 import torch
-from torch.optim import Adam, AdamW
+from torch.optim import Adam, AdamW, SGD
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlateau
 import os
 from tqdm import tqdm
@@ -29,11 +29,17 @@ class Trainer:
             param.requires_grad = True
         
         # Setup optimizer and scheduler
-        self.optimizer = AdamW(
+        # self.optimizer = AdamW(
+        #     self.model.parameters(),
+        #     lr=config.learning_rate,
+        #     weight_decay=config.weight_decay,
+        #     fused=True
+        # )
+        self.optimizer = SGD(
             self.model.parameters(),
             lr=config.learning_rate,
-            weight_decay=config.weight_decay,
-            fused=True
+            momentum=0.9,
+            weight_decay=config.weight_decay
         )
         self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
@@ -71,12 +77,17 @@ class Trainer:
         progress_bar = tqdm(self.train_loader, desc=f'Epoch {epoch}')
         
         for images, targets in progress_bar:
+            print(targets)
             # Move images to device
             images = [image.to(self.device) for image in images]
             
             # Move targets to device
             targets = [{k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                       for k, v in t.items()} for t in targets]
+            
+            features = self.model.backbone(images)
+            for k, v in features.items():
+                print(f"Feature {k}: shape {v.shape}")
             
             # Forward pass
             loss_dict = self.model(images, targets)
@@ -85,7 +96,7 @@ class Trainer:
             # Backward pass
             self.optimizer.zero_grad()
             losses.backward()
-            clip_grad_norm_(self.model.parameters(), max_norm=0.6)
+            clip_grad_norm_(self.model.parameters(), max_norm=2.0)
             self.optimizer.step()
             
             total_loss += losses.item()
