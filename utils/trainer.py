@@ -29,28 +29,28 @@ class Trainer:
             param.requires_grad = True
         
         # Setup optimizer and scheduler
-        # self.optimizer = AdamW(
-        #     self.model.parameters(),
-        #     lr=config.learning_rate,
-        #     weight_decay=config.weight_decay,
-        #     fused=True
-        # )
-        self.optimizer = SGD(
+        self.optimizer = AdamW(
             self.model.parameters(),
             lr=config.learning_rate,
-            momentum=0.9,
-            weight_decay=config.weight_decay
+            weight_decay=config.weight_decay,
+            # fused=True
         )
-        # self.scheduler = CosineAnnealingLR(
-        #     optimizer=self.optimizer,
-        #     T_max=config.epochs,
-        #     eta_min=1e-6
+        # self.optimizer = SGD(
+        #     self.model.parameters(),
+        #     lr=config.learning_rate,
+        #     momentum=0.9,
+        #     weight_decay=config.weight_decay
         # )
-        self.scheduler = StepLR(
+        self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
-            step_size=config.lr_scheduler_step,
-            gamma=config.lr_scheduler_gamma
+            T_max=config.epochs,
+            eta_min=1e-6
         )
+        # self.scheduler = StepLR(
+        #     optimizer=self.optimizer,
+        #     step_size=config.lr_scheduler_step,
+        #     gamma=config.lr_scheduler_gamma
+        # )
         
         # Setup metrics
         self.map_metric = MeanAveragePrecision(
