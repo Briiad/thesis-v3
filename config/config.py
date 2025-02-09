@@ -41,8 +41,8 @@ class TrainConfig:
     num_classes: int = 7
     learning_rate: float =3e-4
     weight_decay: float = 5e-4
-    lr_scheduler_step: int = 30
-    lr_scheduler_gamma: float = 0.3
+    lr_scheduler_step: int = 25
+    lr_scheduler_gamma: float = 0.1
     
     # Checkpoint settings
     checkpoint_dir: str = "outputs/checkpoints"

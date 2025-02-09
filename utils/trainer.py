@@ -1,6 +1,6 @@
 import torch
 from torch.optim import Adam, AdamW, SGD
-from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlateau, LambdaLR
 import os
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -29,22 +29,27 @@ class Trainer:
             param.requires_grad = True
         
         # Setup optimizer and scheduler
-        self.optimizer = AdamW(
-            self.model.parameters(),
-            lr=config.learning_rate,
-            weight_decay=config.weight_decay,
-            # fused=True
-        )
-        # self.optimizer = SGD(
+        # self.optimizer = AdamW(
         #     self.model.parameters(),
         #     lr=config.learning_rate,
-        #     momentum=0.9,
-        #     weight_decay=config.weight_decay
+        #     weight_decay=config.weight_decay,
+        #     # fused=True
         # )
-        self.scheduler = CosineAnnealingLR(
+        self.optimizer = SGD(
+            self.model.parameters(),
+            lr=config.learning_rate,
+            momentum=0.9,
+            weight_decay=config.weight_decay,
+            nesterov=True
+        )
+        # self.scheduler = CosineAnnealingLR(
+        #     optimizer=self.optimizer,
+        #     T_max=config.epochs,
+        #     eta_min=1e-6
+        # )
+        self.scheduler = LambdaLR(
             optimizer=self.optimizer,
-            T_max=config.epochs,
-            eta_min=1e-6
+            lr_lambda=self.warmup_scheduler
         )
         # self.scheduler = StepLR(
         #     optimizer=self.optimizer,
@@ -75,6 +80,11 @@ class Trainer:
         
         # Initialize best mAP for model saving
         self.best_map = 0.0
+        
+    def warmup_scheduler(epoch):
+        if epoch < 5:
+            return epoch / 5
+        return 0.5 * (1 + torch.cos((epoch - 5) / (100 - 5) * 3.1415926535))
 
     def train_one_epoch(self, epoch: int) -> Dict:
         self.model.train()
