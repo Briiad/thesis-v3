@@ -97,7 +97,6 @@ class Trainer:
     def _prepare_classification_inputs(self, predictions, targets):
         all_pred_labels = []
         all_true_labels = []
-        
         for pred, target in zip(predictions, targets):
             if len(pred['labels']) > 0:
                 # Use the most confident prediction
@@ -105,7 +104,7 @@ class Trainer:
                 all_pred_labels.append(pred['labels'][max_score_idx].item())
             else:
                 all_pred_labels.append(0)  # Background class
-
+            
             if len(target['labels']) > 0:
                 all_true_labels.append(target['labels'][0].item())
             else:
@@ -114,6 +113,14 @@ class Trainer:
         # Convert to tensor with correct shape
         pred_labels = torch.tensor(all_pred_labels, dtype=torch.long, device=self.device)
         true_labels = torch.tensor(all_true_labels, dtype=torch.long, device=self.device)
+        
+        # Clamp labels to valid range
+        pred_labels = torch.clamp(pred_labels, min=0, max=self.config.num_classes - 1)
+        true_labels = torch.clamp(true_labels, min=0, max=self.config.num_classes - 1)
+        
+        # Debugging: Print labels for inspection
+        print("Predicted labels:", pred_labels)
+        print("True labels:", true_labels)
         
         return pred_labels, true_labels
 
