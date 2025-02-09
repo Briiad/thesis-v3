@@ -41,10 +41,15 @@ class Trainer:
             momentum=0.9,
             weight_decay=config.weight_decay
         )
-        self.scheduler = CosineAnnealingLR(
+        # self.scheduler = CosineAnnealingLR(
+        #     optimizer=self.optimizer,
+        #     T_max=config.epochs,
+        #     eta_min=1e-6
+        # )
+        self.scheduler = ReduceLROnPlateau(
             optimizer=self.optimizer,
-            T_max=config.epochs,
-            eta_min=1e-6
+            factor=config.lr_scheduler_gamma,
+            patience=config.lr_scheduler_step
         )
         
         # Setup metrics
@@ -92,7 +97,6 @@ class Trainer:
             # Forward pass
             loss_dict = self.model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
-            print(loss_dict)
             
             # Backward pass
             self.optimizer.zero_grad()
