@@ -9,6 +9,7 @@ from torchmetrics.classification import MulticlassPrecision, MulticlassRecall, M
 import wandb
 from typing import Dict
 from utils.customMetrics import calculate_map
+import math
 
 class Trainer:
     @staticmethod
@@ -90,7 +91,7 @@ class Trainer:
     def warmup_scheduler(epoch):
         if epoch < 5:
             return epoch / 5
-        return 0.5 * (1 + torch.cos((epoch - 5) / (100 - 5) * 3.1415926535))
+        return 0.5 * (1 + math.cos((epoch - 5) / (100 - 5) * math.pi))
 
     def train_one_epoch(self, epoch: int) -> Dict:
         self.model.train()
