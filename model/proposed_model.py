@@ -100,9 +100,6 @@ def create_mobilenetv3_large_fcos(num_classes):
         num_classes=num_classes,
         anchor_generator=anchor_generator
     )
-
-    # Wrap the model with DataParallel
-    model = nn.DataParallel(model, device_ids=[0, 1, 2, 3], output_device=0)
     return model
 
 if __name__ == '__main__':
