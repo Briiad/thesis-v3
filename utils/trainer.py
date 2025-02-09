@@ -77,7 +77,11 @@ class Trainer:
         progress_bar = tqdm(self.train_loader, desc=f'Epoch {epoch}')
         
         for images, targets in progress_bar:
-            print(targets)
+            valid_indices = [i for i, t in enumerate(targets) if t["boxes"].shape[0] > 0]
+
+            if len(valid_indices) == 0:
+                continue  # Skip batch if all images are empty
+
             # Move images to device
             images = [image.to(self.device) for image in images]
             
@@ -85,13 +89,10 @@ class Trainer:
             targets = [{k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                       for k, v in t.items()} for t in targets]
             
-            features = self.model.backbone(images)
-            for k, v in features.items():
-                print(f"Feature {k}: shape {v.shape}")
-            
             # Forward pass
             loss_dict = self.model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
+            print(loss_dict)
             
             # Backward pass
             self.optimizer.zero_grad()

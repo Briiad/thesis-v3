@@ -4,33 +4,28 @@ from data.dataset import CustomVOCDataset
 from config.config import data_cfg
 
 def collate_fn(batch):
-    """
-    Custom collate function to handle varying number of bounding boxes
-    
-    Args:
-        batch (list): List of (image, bboxes, labels) tuples
-    
-    Returns:
-        tuple: Batched images, targets
-    """
     images = [item[0] for item in batch]
     targets = []
     
     for item in batch:
-        # Handle case of empty bboxes
         if len(item[1]) == 0:
-            # Create an empty tensor for boxes with correct shape
             target = {
                 'boxes': torch.zeros((0, 4), dtype=torch.float32),
                 'labels': torch.zeros((0,), dtype=torch.long)
             }
         else:
+            # Convert normalized coordinates back to absolute pixels
+            img_h, img_w = images[0].shape[-2:]
+            abs_boxes = torch.tensor(item[1], dtype=torch.float32)
+            abs_boxes[:, [0, 2]] *= img_w  # Scale x-coordinates
+            abs_boxes[:, [1, 3]] *= img_h  # Scale y-coordinates
+
             target = {
-                'boxes': torch.tensor(item[1], dtype=torch.float32),
+                'boxes': abs_boxes,
                 'labels': torch.tensor(item[2], dtype=torch.long)
             }
         targets.append(target)
-    
+
     return torch.stack(images), targets
 
 def loaders():
