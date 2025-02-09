@@ -1,257 +1,114 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
+from torchvision.models.detection.fcos import FCOS, FCOSHead
 from torchvision.models.detection.anchor_utils import AnchorGenerator
-from torchvision.models.detection.retinanet import RetinaNetHead
-from torchvision.models.detection.fcos import FCOSHead
-from torchvision.models.mobilenetv3 import MobileNet_V3_Large_Weights, mobilenet_v3_large
-from torchvision.ops import batched_nms, generalized_box_iou_loss
-from torchvision.models.detection.image_list import ImageList
+from torchvision.ops import boxes as box_ops
 
-
-class MobileNetV3BiFPN(nn.Module):
-    def __init__(self):
+class BiFPN(nn.Module):
+    def __init__(self, feature_channels=[16, 24, 40, 112, 960], out_channels=128):
         super().__init__()
-        # Backbone
-        backbone = mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.DEFAULT).features
-        self.layer1 = nn.Sequential(backbone[0], backbone[1])  # 16
-        self.layer2 = backbone[2:4]  # 24
-        self.layer3 = backbone[4:7]  # 40
-        self.layer4 = backbone[7:13]  # 112
-        self.layer5 = backbone[13:]  # 960
-
-        # BiFPN Configuration
-        self.bifpn = nn.ModuleList([
-            BiFPNBlock(in_channels=[24, 40, 112, 960], out_channels=128)
-        ])
-
-    def forward(self, x):
-        # Feature Extraction
-        c2 = self.layer1(x)
-        c3 = self.layer2(c2)
-        c4 = self.layer3(c3)
-        c5 = self.layer4(c4)
-        c6 = self.layer5(c5)
-
-        # BiFPN Processing
-        features = {'0': c3, '1': c4, '2': c5, '3': c6}
-        for bifpn in self.bifpn:
-            features = bifpn(features)
-        return features
-
-
-class BiFPNBlock(nn.Module):
-    """Bi-directional Feature Pyramid Network Block"""
-    def __init__(self, in_channels, out_channels=128):
-        super().__init__()
-        self.conv = nn.Sequential(
+        self.w1 = nn.Parameter(torch.ones(2))
+        self.w2 = nn.Parameter(torch.ones(3))
+        
+        # Top-down pathway
+        self.td_conv1 = nn.Conv2d(feature_channels[-1], out_channels, 1)
+        self.td_conv2 = nn.Conv2d(feature_channels[-2], out_channels, 1)
+        self.td_conv3 = nn.Conv2d(feature_channels[-3], out_channels, 1)
+        
+        # Bottom-up with depthwise
+        self.bu_conv1 = nn.Sequential(
             nn.Conv2d(out_channels, out_channels, 3, padding=1, groups=out_channels),
-            nn.Conv2d(out_channels, out_channels, 1),
-            nn.BatchNorm2d(out_channels),
-            nn.SiLU()
+            nn.Conv2d(out_channels, out_channels, 1)
         )
-        # Top-down path: Add 1x1 convolutions to match channel dimensions
-        self.td_conv1 = nn.Conv2d(in_channels[3], out_channels, 1)  # For p6
-        self.td_conv2 = nn.Conv2d(in_channels[2], out_channels, 1)  # For p5
-        self.td_conv3 = nn.Conv2d(in_channels[1], out_channels, 1)  # For p4
-        self.td_conv4 = nn.Conv2d(in_channels[0], out_channels, 1)  # For p3
-
-        # Bottom-up path: Add 1x1 convolutions to match channel dimensions
-        self.bu_conv1 = nn.Conv2d(out_channels, out_channels, 1)  # For p4
-        self.bu_conv2 = nn.Conv2d(out_channels, out_channels, 1)  # For p5
-        self.bu_conv3 = nn.Conv2d(out_channels, out_channels, 1)  # For p6
+        self.bu_conv2 = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels, 3, padding=1, groups=out_channels),
+            nn.Conv2d(out_channels, out_channels, 1)
+        )
 
     def forward(self, features):
-        # Unpack features
-        p3, p4, p5, p6 = features['0'], features['1'], features['2'], features['3']
+        c2, c3, c4, c5, c6 = features.values()
+        p6 = self.td_conv1(c6)
+        p5 = self.td_conv2(c5) + F.interpolate(p6, scale_factor=2)
+        p4 = self.td_conv3(c4) + F.interpolate(p5, scale_factor=2)
+        
+        n4 = self.bu_conv1(p4)
+        n5 = self.bu_conv2(p5 + F.max_pool2d(n4, kernel_size=2))
+        n6 = self.bu_conv2(p6 + F.max_pool2d(n5, kernel_size=2))
+        
+        print("Feature maps from BiFPN:", {'0': n4.shape, '1': n5.shape, '2': n6.shape})
+        return {'0': n4, '1': n5, '2': n6}
 
-        # Top-down fusion
-        p6_td = self.td_conv1(p6)
-        p5_td = self.td_conv2(p5) + F.interpolate(p6_td, scale_factor=2)
-        p4_td = self.td_conv3(p4) + F.interpolate(p5_td, scale_factor=2)
-        p3_td = self.td_conv4(p3) + F.interpolate(p4_td, scale_factor=2)
-
-        # Bottom-up fusion
-        p4_bu = self.bu_conv1(p4_td + F.max_pool2d(p3_td, kernel_size=2))
-        p5_bu = self.bu_conv2(p5_td + F.max_pool2d(p4_bu, kernel_size=2))
-        p6_bu = self.bu_conv3(p6_td + F.max_pool2d(p5_bu, kernel_size=2))
-
-        return {
-            '0': self.conv(p3_td),
-            '1': self.conv(p4_bu),
-            '2': self.conv(p5_bu),
-            '3': self.conv(p6_bu)
-        }
-
-class HybridHead(nn.Module):
-    """Combines RetinaNet classification with FCOS regression"""
-    def __init__(self, in_channels=128, num_classes=7, num_anchors=9):
+class MobileNetV3LargeBackbone(nn.Module):
+    def __init__(self, pretrained=True):
         super().__init__()
-        # Shared parameters
-        self.num_classes = num_classes
-        self.num_anchors = num_anchors
-
-        # RetinaNet-style classification head
-        self.cls_head = RetinaNetHead(
-            in_channels=in_channels,
-            num_anchors=num_anchors,
-            num_classes=num_classes
+        backbone = torchvision.models.mobilenet_v3_large(pretrained=pretrained).features
+        
+        # Correct layer slicing for MobileNetV3-Large
+        self.layer1 = nn.Sequential(backbone[0], backbone[1])   # out: 16
+        self.layer2 = backbone[2:4]                             # out: 24
+        self.layer3 = backbone[4:7]                             # out: 40
+        self.layer4 = backbone[7:13]                            # out: 112
+        self.layer5 = nn.Sequential(
+            backbone[13],       # out: 160
+            backbone[14],       # out: 160
+            backbone[15],       # out: 160
+            backbone[16]        # out: 960 (final features)
         )
-
-        # FCOS-style regression head
-        self.reg_head = FCOSHead(
-            in_channels=in_channels,
-            num_classes=num_classes,
-            num_anchors=1
+        
+        # Update BiFPN input channels to match actual outputs
+        self.bifpn = BiFPN(
+            feature_channels=[16, 24, 40, 112, 960],  # Changed last channel to 960
+            out_channels=128
         )
+        # Define out_channels attribute (required by FCOS)
+        self.out_channels = 128  # Matches BiFPN output
 
     def forward(self, x):
-        # Convert features dict to ordered list
-        features_list = list(x.values())
+        enc0 = self.layer1(x)   # 16 channels
+        enc1 = self.layer2(enc0)  # 24
+        enc2 = self.layer3(enc1)  # 40
+        enc3 = self.layer4(enc2)  # 112
+        enc4 = self.layer5(enc3)  # 960 (not 1280!)
         
-        # Process through heads
-        cls_logits = self.cls_head(features_list)["cls_logits"]  # shape: [B, 9216, num_classes]
-        reg_outputs = self.reg_head(features_list)
-        bbox_reg = reg_outputs["bbox_regression"]  # shape: [B, 1024, 4]
-        centerness = reg_outputs["bbox_ctrness"]     # shape: [B, 1024, 1]
+        bifpn_output = self.bifpn({
+            '0': enc0, '1': enc1, '2': enc2, 
+            '3': enc3, '4': enc4
+        })
         
-        # Tile regression and centerness predictions to match classification anchors
-        # Here, factor should be 9 because 9216 / 1024 = 9.
-        factor = cls_logits.shape[1] // bbox_reg.shape[1]
-        if factor * bbox_reg.shape[1] != cls_logits.shape[1]:
-            raise ValueError("Cannot align regression and classification anchor counts.")
-        
-        bbox_reg = bbox_reg.repeat(1, factor, 1)     # Now shape: [B, 9216, 4]
-        centerness = centerness.repeat(1, factor, 1)   # Now shape: [B, 9216, 1]
-        
-        return cls_logits, bbox_reg, centerness
+        print("Feature maps from BiFPN:", bifpn_output.keys())
+        return bifpn_output
 
-def create_proposed_model(num_classes):
-    # Anchor configuration for small objects
+def create_mobilenetv3_large_fcos(num_classes):
+    # Define anchor sizes and aspect ratios
+    anchor_sizes = ((8,), (16,), (32,))  # Match the 3 feature maps
+    aspect_ratios = ((1.0,),) * len(anchor_sizes)  # One aspect ratio per feature map
+
+    # Create the anchor generator
     anchor_generator = AnchorGenerator(
-        sizes=((8, 16, 32), (16, 32, 64), (32, 64, 128), (64, 128, 256)),
-        aspect_ratios=((0.25, 0.5, 1.0, 2.0, 4.0),) * 4
+        sizes=anchor_sizes,
+        aspect_ratios=aspect_ratios
     )
 
-    # Model components
-    backbone = MobileNetV3BiFPN()
-    head = HybridHead(num_classes=num_classes)
+    # Create the backbone
+    backbone = MobileNetV3LargeBackbone(pretrained=True)
 
-    return HybridDetectionModel(
+    # Create the FCOS model
+    model = FCOS(
         backbone=backbone,
-        head=head,
-        anchor_generator=anchor_generator,
-        num_classes=num_classes
+        num_classes=num_classes,
+        anchor_generator=anchor_generator
     )
 
-
-class HybridDetectionModel(nn.Module):
-    def __init__(self, backbone, head, anchor_generator, num_classes):
-        super().__init__()
-        self.backbone = backbone
-        self.head = head
-        self.anchor_generator = anchor_generator
-        self.num_classes = num_classes
-
-        # Loss parameters
-        self.focal_loss_alpha = 0.25
-        self.focal_loss_gamma = 2.0
-        self.center_loss_weight = 0.1
-
-    def forward(self, images, targets=None):
-        if isinstance(images, (list, tuple)):
-            images = torch.stack(images)
-        features = self.backbone(images)
-        feature_maps = list(features.values())
-        cls_logits, bbox_reg, centerness = self.head(features)
-        
-        image_sizes = [(img.shape[-2], img.shape[-1]) for img in images]
-        image_list = ImageList(images, image_sizes)
-        anchors = self.anchor_generator(image_list, feature_maps)
-
-        if self.training:
-            return self.compute_loss(anchors, cls_logits, bbox_reg, centerness, targets)
-        else:
-            return self.post_process(anchors, cls_logits, bbox_reg, centerness)
-
-    def compute_loss(self, anchors, cls_logits, bbox_reg, centerness, targets):
-        # Flatten all anchors and predictions
-        num_anchors = len(anchors)
-        cls_logits = cls_logits.permute(0, 2, 3, 1).reshape(-1, self.num_classes)
-        bbox_reg = bbox_reg.view(-1, 4)
-        centerness = centerness.view(-1)
-
-        # Extract ground truth values
-        gt_classes = torch.cat([t['labels'] for t in targets], dim=0)
-        gt_bboxes = torch.cat([t['boxes'] for t in targets], dim=0)
-        
-        # Focal Loss for classification
-        ce_loss = F.cross_entropy(cls_logits, gt_classes, reduction='none')
-        pt = torch.exp(-ce_loss)
-        focal_loss = (self.focal_loss_alpha * (1 - pt) ** self.focal_loss_gamma * ce_loss).mean()
-        
-        # IoU Loss for bbox regression
-        iou_loss = generalized_box_iou_loss(bbox_reg, gt_bboxes, reduction='mean')
-        
-        # Centerness loss
-        center_loss = F.binary_cross_entropy_with_logits(centerness, torch.ones_like(centerness))
-        
-        # Total loss
-        total_loss = focal_loss + iou_loss + self.center_loss_weight * center_loss
-        return {"loss": total_loss, "focal_loss": focal_loss, "iou_loss": iou_loss, "center_loss": center_loss}
-
-    def post_process(self, anchors, cls_logits, bbox_reg, centerness, conf_threshold=0.05, iou_threshold=0.5):
-        # Convert logits to probabilities
-        cls_probs = torch.sigmoid(cls_logits)  # shape: [B, N, num_classes]
-        centerness_probs = torch.sigmoid(centerness)  # shape: [B, N, 1]
-
-        # Multiply classification probabilities by centerness scores
-        scores = cls_probs * centerness_probs  # shape: [B, N, num_classes]
-
-        # Compute max confidence and corresponding labels per anchor
-        max_scores, labels = scores.max(dim=-1)  # both shape: [B, N]
-
-        # Create a mask based on the max score per anchor
-        keep = max_scores > conf_threshold  # shape: [B, N]
-
-        # Flatten all tensors over batch and anchor dimensions.
-        B, N, num_classes = scores.shape
-        scores = scores.reshape(-1, num_classes)    # shape: [B*N, num_classes]
-        bbox_reg = bbox_reg.reshape(-1, 4)            # shape: [B*N, 4]
-        anchors = torch.cat(anchors, dim=0)           # Combine list into tensor, shape: [B*N, 4]
-        max_scores = max_scores.reshape(-1)           # shape: [B*N]
-        labels = labels.reshape(-1)                   # shape: [B*N]
-        keep = keep.reshape(-1)                       # shape: [B*N]
-
-        # Apply the mask to filter out low-confidence anchors
-        scores = scores[keep]
-        bbox_reg = bbox_reg[keep]
-        anchors = anchors[keep]
-        max_scores = max_scores[keep]
-        labels = labels[keep]
-
-        # Perform non-maximum suppression (NMS)
-        keep_indices = batched_nms(bbox_reg, max_scores, labels, iou_threshold)
-
-        # Return final detections
-        return [{
-            "boxes": bbox_reg[keep_indices],
-            "scores": scores[keep_indices],
-            "labels": labels[keep_indices]
-        }]
+    # Wrap the model with DataParallel
+    model = nn.DataParallel(model, device_ids=[0, 1, 2, 3], output_device=0)
+    return model
 
 if __name__ == '__main__':
-    model = create_proposed_model(num_classes=7)
+    model = create_mobilenetv3_large_fcos(num_classes=20)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
-    
-    # # Train Test
-    # model.train()
-    # dummy_input = torch.randn(1, 3, 512, 512)  # Example input (batch_size=1, channels=3, height=512, width=512)
-    # output = model(dummy_input)
-    # print("Forward pass successful!")
-    
-    # Eval Test
     model.eval()
-    dummy_input = torch.randn(1, 3, 512, 512)  # Example input (batch_size=1, channels=3, height=512, width=512)
-    output = model(dummy_input)
-    print("Forward pass successful!")
+    image = torch.randn(1, 3, 640, 640)
+    output = model(image)
+    print("Output shapes:", {k: v.shape for k, v in output[0].items()})
