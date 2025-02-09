@@ -116,16 +116,17 @@ class Trainer:
                 # If no predictions, use a background/null class (typically 0)
                 all_pred_labels.append(torch.tensor(0).to(self.device))
             
-            # Use the first/most confident label from ground truth if multiple
+            # In trainer.py, modify label handling:
             if len(target['labels']) > 0:
                 all_true_labels.append(target['labels'][0])
             else:
-                # If no ground truth labels, use a background/null class
-                all_true_labels.append(torch.tensor(0).to(self.device))
-        
-        # Convert to tensor
-        pred_labels = torch.stack(all_pred_labels)
-        true_labels = torch.stack(all_true_labels)
+                # Use a sentinel value (e.g., -1) and filter later
+                all_true_labels.append(torch.tensor(-1).to(self.device))
+
+            # Filter out background/sentinel class before computing metrics
+            valid_indices = true_labels != -1
+            pred_labels = pred_labels[valid_indices]
+            true_labels = true_labels[valid_indices]
         
         return pred_labels, true_labels
 

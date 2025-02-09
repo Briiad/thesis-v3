@@ -28,14 +28,23 @@ class BiFPN(nn.Module):
         )
 
     def forward(self, features):
-        c2, c3, c4, c5, c6 = features.values()
-        p6 = self.td_conv1(c6)
-        p5 = self.td_conv2(c5) + F.interpolate(p6, scale_factor=2)
-        p4 = self.td_conv3(c4) + F.interpolate(p5, scale_factor=2)
+        c2, c3, c4, c5, c6 = features.values()  # Ensure correct order from backbone
         
+        # Top-down pathway with weighted fusion
+        p6 = self.td_conv1(c6)
+        p6_resized = F.interpolate(p6, scale_factor=2)
+        p5 = (self.w1[0] * self.td_conv2(c5) + self.w1[1] * p6_resized) / (self.w1.sum() + 1e-8)
+        
+        p5_resized = F.interpolate(p5, scale_factor=2)
+        p4 = (self.w2[0] * self.td_conv3(c4) + self.w2[1] * p5_resized) / (self.w2.sum() + 1e-8)
+        
+        # Bottom-up pathway
         n4 = self.bu_conv1(p4)
-        n5 = self.bu_conv2(p5 + F.max_pool2d(n4, kernel_size=2))
-        n6 = self.bu_conv2(p6 + F.max_pool2d(n5, kernel_size=2))
+        n4_pooled = F.max_pool2d(n4, kernel_size=2)
+        n5 = self.bu_conv2(p5 + n4_pooled)
+        
+        n5_pooled = F.max_pool2d(n5, kernel_size=2)
+        n6 = self.bu_conv2(p6 + n5_pooled)
         
         return {'0': n4, '1': n5, '2': n6}
 
@@ -80,7 +89,7 @@ class MobileNetV3LargeBackbone(nn.Module):
 
 def create_mobilenetv3_large_fcos(num_classes):
     # Define anchor sizes and aspect ratios
-    anchor_sizes = ((8,), (16,), (32,))  # Match the 3 feature maps
+    anchor_sizes = ((32,), (64,), (128,))  # Match the 3 feature maps
     aspect_ratios = ((1.0,),) * len(anchor_sizes)  # One aspect ratio per feature map
 
     # Create the anchor generator
