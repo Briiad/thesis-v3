@@ -6,7 +6,7 @@ from torchvision.models.detection.anchor_utils import AnchorGenerator
 
 class BiFPN(nn.Module):
     """Modified BiFPN for MobileNetV3-Large"""
-    def __init__(self, feature_channels=[16, 24, 40, 112, 960], out_channels=128):
+    def __init__(self, feature_channels=[16, 24, 40, 112, 960], out_channels=256):
         super().__init__()
         self.w1 = nn.Parameter(torch.ones(2))
         self.w2 = nn.Parameter(torch.ones(3))
@@ -93,11 +93,10 @@ def create_mobilenetv3_fcos(num_classes):
         anchor_generator=anchor_generator,
         head=head,
         score_thresh=0.01,
-        nms_thresh=0.4,
+        nms_thresh=0.25,
         max_size=640,
         min_size=640,
-        detections_per_img=200,
-        center_sampling_radius=2.5
+        detections_per_img=200
     )
     return model
 
