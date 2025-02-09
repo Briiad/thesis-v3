@@ -9,8 +9,21 @@ from torchmetrics.classification import MulticlassPrecision, MulticlassRecall, M
 import wandb
 from typing import Dict
 from utils.customMetrics import calculate_map
+import math
 
 class Trainer:
+  
+    @staticmethod
+    def lr_lambda(epoch):
+        warmup_epochs = 5
+        total_epochs = 100
+        if epoch < warmup_epochs:
+            # Linear warmup: from 0 up to 1 over 5 epochs
+            return epoch / warmup_epochs
+        else:
+            # Cosine decay: smoothly decays from 1 to 0 over the remaining epochs
+            return 0.5 * (1 + math.cos(math.pi * (epoch - warmup_epochs) / (total_epochs - warmup_epochs)))
+      
     def __init__(self, model, train_loader, val_loader, test_loader, config):
         self.model = model
         self.train_loader = train_loader
@@ -42,10 +55,14 @@ class Trainer:
             weight_decay=config.weight_decay,
             nesterov=True
         )
-        self.scheduler = CosineAnnealingLR(
+        # self.scheduler = CosineAnnealingLR(
+        #     optimizer=self.optimizer,
+        #     T_max=config.epochs,
+        #     eta_min=1e-6
+        # )
+        self.scheduler = LambdaLR(
             optimizer=self.optimizer,
-            T_max=config.epochs,
-            eta_min=1e-6
+            lr_lambda=Trainer.lr_lambda
         )
         # self.scheduler = StepLR(
         #     optimizer=self.optimizer,
@@ -57,10 +74,7 @@ class Trainer:
         self.map_metric = MeanAveragePrecision(
             iou_type='bbox',
             box_format='xyxy',
-            average='macro',
-            class_metrics=True,
-            iou_thresholds=[0.2, 0.25, 0.3, 0.35, 0.4],
-            rec_thresholds=[0.2, 0.25, 0.3, 0.35, 0.4]
+            average='macro'
         ).to(self.device)
         
         # Assuming 7 classes - adjust num_classes as needed
@@ -102,7 +116,13 @@ class Trainer:
             
             # Forward pass
             loss_dict = self.model(images, targets)
-            losses = sum(loss for loss in loss_dict.values())
+            loss_cls = loss_dict["classification"]
+            loss_box = loss_dict["bbox_regression"]
+            loss_ctr = loss_dict["bbox_ctrness"]
+            alpha = 1.0  
+            beta = 1.0  
+            gamma = 0.5 
+            losses = alpha * loss_cls + beta * loss_box + gamma * loss_ctr
             
             # Backward pass
             self.optimizer.zero_grad()
