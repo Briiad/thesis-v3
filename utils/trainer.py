@@ -1,27 +1,30 @@
 import torch
-from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim import Adam, AdamW
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlateau
 import os
 from tqdm import tqdm
-import wandb  # assuming you're using wandb for logging
+from torch.nn.utils import clip_grad_norm_
 from torchmetrics.detection import MeanAveragePrecision
 from torchmetrics.classification import MulticlassPrecision, MulticlassRecall, MulticlassF1Score, MulticlassConfusionMatrix
-
-# Import your custom metric (if any) or use FCOS loss outputs as provided by torchvision.
-# Here we assume your FCOS model returns a loss dictionary during training.
-# Also, assume that your dataloaders provide (images, targets) in the proper format.
+import wandb
+from typing import Dict
+from utils.customMetrics import calculate_map
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, config):
+    def __init__(self, model, train_loader, val_loader, test_loader, config):
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
-        self.config = config  # config contains epochs, learning_rate, checkpoint_dir, etc.
+        self.test_loader = test_loader
+        self.config = config
         
+        self.early_stopping_counter = 0
+        self.early_stopping_patience = 15
+        
+        # Setup device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = self.model.to(self.device)
         
-        # Enable training for backbone if needed
         for param in self.model.backbone.parameters():
             param.requires_grad = True
         
@@ -29,10 +32,11 @@ class Trainer:
         self.optimizer = AdamW(
             self.model.parameters(),
             lr=config.learning_rate,
-            weight_decay=config.weight_decay
+            weight_decay=config.weight_decay,
+            fused=True
         )
         self.scheduler = CosineAnnealingLR(
-            self.optimizer,
+            optimizer=self.optimizer,
             T_max=config.epochs,
             eta_min=1e-6
         )
@@ -47,34 +51,92 @@ class Trainer:
             rec_thresholds=[0.2, 0.25, 0.3, 0.35, 0.4]
         ).to(self.device)
         
-        # Example: assume 7 classes (adjust if needed)
+        # Assuming 7 classes - adjust num_classes as needed
         self.precision_metric = MulticlassPrecision(num_classes=config.num_classes, average='macro').to(self.device)
         self.recall_metric = MulticlassRecall(num_classes=config.num_classes, average='macro').to(self.device)
         self.f1_metric = MulticlassF1Score(num_classes=config.num_classes, average='macro').to(self.device)
-        self.confusion_matrix_metric = MulticlassConfusionMatrix(num_classes=config.num_classes).to(self.device)
+        self.confusion_matrix_metric = MulticlassConfusionMatrix(
+            num_classes=config.num_classes
+        ).to(self.device)
         
+        # Create checkpoint directory if it doesn't exist
         os.makedirs(config.checkpoint_dir, exist_ok=True)
+        
+        # Initialize best mAP for model saving
         self.best_map = 0.0
 
-    def train_one_epoch(self, epoch: int):
+    def train_one_epoch(self, epoch: int) -> Dict:
         self.model.train()
         total_loss = 0
-        pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}")
-        for images, targets in pbar:
-            images = [img.to(self.device) for img in images]
-            targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+        progress_bar = tqdm(self.train_loader, desc=f'Epoch {epoch}')
+        
+        for images, targets in progress_bar:
+            # Move images to device
+            images = [image.to(self.device) for image in images]
+            
+            # Move targets to device
+            targets = [{k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                      for k, v in t.items()} for t in targets]
+            
+            # Forward pass
             loss_dict = self.model(images, targets)
-            loss = sum(loss for loss in loss_dict.values())
+            losses = sum(loss for loss in loss_dict.values())
+            
+            # Backward pass
             self.optimizer.zero_grad()
-            loss.backward()
+            losses.backward()
+            clip_grad_norm_(self.model.parameters(), max_norm=0.6)
             self.optimizer.step()
-            total_loss += loss.item()
-            pbar.set_postfix(loss=loss.item())
-        return total_loss / len(self.train_loader)
+            
+            total_loss += losses.item()
+            progress_bar.set_postfix({'loss': losses.item()})
+        
+        avg_loss = total_loss / len(self.train_loader)
+        return {'train_loss': avg_loss}
+      
+    def _prepare_classification_inputs(self, predictions, targets):
+        """
+        Prepare inputs for classification metrics from object detection predictions.
+        
+        Args:
+            predictions (List[Dict]): Model predictions
+            targets (List[Dict]): Ground truth targets
+        
+        Returns:
+            Tuple of tensors for classification metrics
+        """
+        # Collect all predicted labels and true labels
+        all_pred_labels = []
+        all_true_labels = []
+        
+        for pred, target in zip(predictions, targets):
+            # If using the most confident prediction per image
+            if len(pred['labels']) > 0:
+                # Find the index of the highest scoring prediction
+                max_score_idx = pred['scores'].argmax()
+                all_pred_labels.append(pred['labels'][max_score_idx])
+            else:
+                # If no predictions, use a background/null class (typically 0)
+                all_pred_labels.append(torch.tensor(0).to(self.device))
+            
+            # Use the first/most confident label from ground truth if multiple
+            if len(target['labels']) > 0:
+                all_true_labels.append(target['labels'][0])
+            else:
+                # If no ground truth labels, use a background/null class
+                all_true_labels.append(torch.tensor(0).to(self.device))
+        
+        # Convert to tensor
+        pred_labels = torch.stack(all_pred_labels)
+        true_labels = torch.stack(all_true_labels)
+        
+        return pred_labels, true_labels
 
-    def validate(self):
+    def validate(self) -> Dict:
+        """Validate the model using custom mAP implementation"""
         self.model.eval()
-        self.map_metric.reset()
+        
+        # Reset classification metrics
         self.precision_metric.reset()
         self.recall_metric.reset()
         self.f1_metric.reset()
@@ -82,43 +144,125 @@ class Trainer:
         
         all_preds = []
         all_targets = []
-        with torch.no_grad():
-            for images, targets in tqdm(self.val_loader, desc="Validating"):
-                images = [img.to(self.device) for img in images]
-                targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
-                preds = self.model(images)
-                all_preds.extend(preds)
-                all_targets.extend(targets)
-                # For classification metrics, you might compute a “most confident” label per image.
-                # (Assume a helper function _prepare_classification_inputs is defined similarly to your original code.)
         
-        map_results = self.map_metric(all_preds, all_targets)
+        with torch.no_grad():
+            for images, targets in tqdm(self.val_loader, desc='Validating'):
+                images = [image.to(self.device) for image in images]
+                targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+                predictions = self.model(images)
+                
+                all_preds.extend(predictions)
+                all_targets.extend(targets)
+        
+        # Calculate mAP using custom implementation
+        map_results = calculate_map(all_preds, all_targets, num_classes=self.config.num_classes)
+        map_torch_results = self.map_metric(all_preds, all_targets)
+        
+        # Calculate classification metrics
+        pred_labels, true_labels = self._prepare_classification_inputs(all_preds, all_targets)
+        self.precision_metric.update(pred_labels, true_labels)
+        self.recall_metric.update(pred_labels, true_labels)
+        self.f1_metric.update(pred_labels, true_labels)
+        self.confusion_matrix_metric.update(pred_labels, true_labels)
+        
+        # Compute classification metrics
         precision = self.precision_metric.compute()
         recall = self.recall_metric.compute()
         f1_score = self.f1_metric.compute()
         confusion_matrix = self.confusion_matrix_metric.compute().cpu().tolist()
         
-        # Reset metrics after computation
+        # Print validation results
+        print(f"Validation mAP: {map_results['map']}")
+        print(f"Validation mAP (Torch): {map_torch_results}")
+        print(f"Validation Precision: {precision}")
+        print(f"Validation Recall: {recall}")
+        print(f"Validation F1 Score: {f1_score}")
+        
+        wandb.log({"val_confusion_matrix": wandb.plot.confusion_matrix(
+            preds=pred_labels.cpu().numpy(),
+            y_true=true_labels.cpu().numpy(),
+            class_names=[f"Class_{i}" for i in range(self.config.num_classes)]
+        )})
+        
+        # Reset classification metrics
         self.map_metric.reset()
         self.precision_metric.reset()
         self.recall_metric.reset()
         self.f1_metric.reset()
         self.confusion_matrix_metric.reset()
         
-        print(f"Validation mAP: {map_results['map']}")
-        print(f"Validation Precision (macro): {precision.mean().item()}")
-        print(f"Validation Recall (macro): {recall.mean().item()}")
-        print(f"Validation F1 (macro): {f1_score.mean().item()}")
-        
         return {
             'val_mAP': map_results['map'],
+            'val_mAP_torch': map_torch_results['map'].item(),
+            'val_confusion_matrix': confusion_matrix,
+            'val_precision_per_class': precision.tolist(),
+            'val_recall_per_class': recall.tolist(),
+            'val_f1_score_per_class': f1_score.tolist(),
             'val_precision_macro': precision.mean().item(),
             'val_recall_macro': recall.mean().item(),
-            'val_f1_macro': f1_score.mean().item(),
-            'val_confusion_matrix': confusion_matrix
+            'val_f1_score_macro': f1_score.mean().item()
         }
 
-    def save_checkpoint(self, epoch: int, metrics: dict, is_best: bool = False):
+    def test(self) -> Dict:
+        """Test the model using custom mAP implementation"""
+        self.model.eval()
+        
+        # Reset classification metrics
+        self.precision_metric.reset()
+        self.recall_metric.reset()
+        self.f1_metric.reset()
+        self.confusion_matrix_metric.reset()
+        
+        all_preds = []
+        all_targets = []
+        
+        with torch.no_grad():
+            for images, targets in tqdm(self.test_loader, desc='Testing'):
+                images = [image.to(self.device) for image in images]
+                targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+                predictions = self.model(images)
+                
+                all_preds.extend(predictions)
+                all_targets.extend(targets)
+        
+        # Calculate mAP using custom implementation
+        map_results = calculate_map(all_preds, all_targets, num_classes=self.config.num_classes)
+        map_torch_results = self.map_metric(all_preds, all_targets)
+        
+        # Calculate classification metrics
+        pred_labels, true_labels = self._prepare_classification_inputs(all_preds, all_targets)
+        self.precision_metric.update(pred_labels, true_labels)
+        self.recall_metric.update(pred_labels, true_labels)
+        self.f1_metric.update(pred_labels, true_labels)
+        self.confusion_matrix_metric.update(pred_labels, true_labels)
+        
+        # Compute classification metrics
+        precision = self.precision_metric.compute()
+        recall = self.recall_metric.compute()
+        f1_score = self.f1_metric.compute()
+        confusion_matrix = self.confusion_matrix_metric.compute().cpu().tolist()
+        
+        # Reset classification metrics
+        self.map_metric.reset()
+        self.precision_metric.reset()
+        self.recall_metric.reset()
+        self.f1_metric.reset()
+        self.confusion_matrix_metric.reset()
+        
+        return {
+            'test_mAP': map_results['map'],
+            'test_mAP_torch': map_torch_results['map'].item(),
+            'test_confusion_matrix': confusion_matrix,
+            'test_precision_per_class': precision.tolist(),
+            'test_recall_per_class': recall.tolist(),
+            'test_f1_score_per_class': f1_score.tolist(),
+            'test_precision_macro': precision.mean().item(),
+            'test_recall_macro': recall.mean().item(),
+            'test_f1_score_macro': f1_score.mean().item()
+        }
+    
+    def save_checkpoint(self, epoch: int, metrics: Dict, is_best: bool = False):
+        """Save model checkpoint"""
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
@@ -126,22 +270,47 @@ class Trainer:
             'scheduler_state_dict': self.scheduler.state_dict(),
             'metrics': metrics
         }
-        path = os.path.join(self.config.checkpoint_dir, f'checkpoint_epoch_{epoch}.pth')
-        torch.save(checkpoint, path)
+        
+        # Save regular checkpoint
+        if epoch % self.config.save_frequency == 0:
+            path = os.path.join(self.config.checkpoint_dir, f'checkpoint_epoch_{epoch}.pth')
+            torch.save(checkpoint, path)
+        
+        # Save best model
         if is_best:
             best_path = os.path.join(self.config.checkpoint_dir, 'best_model.pth')
             torch.save(checkpoint, best_path)
 
     def train(self):
+        """Full training loop"""
+        # Initialize wandb
         wandb.init(project="object_detection", config=self.config)
+        
         for epoch in range(self.config.epochs):
-            train_loss = self.train_one_epoch(epoch)
+            # Training
+            train_metrics = self.train_one_epoch(epoch)
+            
+            # Validation
             val_metrics = self.validate()
+            
+            # Update learning rate
             self.scheduler.step()
-            metrics = {**{'train_loss': train_loss}, **val_metrics}
+            
+            # Log metrics
+            metrics = {**train_metrics, **val_metrics}
             wandb.log(metrics)
+            
+            # Save checkpoint if it's the best model
             if val_metrics['val_mAP'] > self.best_map:
                 self.best_map = val_metrics['val_mAP']
                 self.save_checkpoint(epoch, metrics, is_best=True)
+            
+            # Regular checkpoint saving
             self.save_checkpoint(epoch, metrics)
+        
+        # Final test
+        test_metrics = self.test()
+        wandb.log(test_metrics)
         wandb.finish()
+        
+        return test_metrics

@@ -101,4 +101,7 @@ def create_mobilenetv3_large_ssd(num_classes):
     
 if __name__ == '__main__':
     model = create_mobilenetv3_large_ssd(num_classes=20)
-    print(model)
+    model.eval()
+    image = torch.randn(1, 3, 640, 640)
+    output = model(image)
+    print("Output shapes:", {k: v.shape for k, v in output[0].items()})
