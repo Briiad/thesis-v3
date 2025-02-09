@@ -46,10 +46,10 @@ class Trainer:
         #     T_max=config.epochs,
         #     eta_min=1e-6
         # )
-        self.scheduler = ReduceLROnPlateau(
+        self.scheduler = StepLR(
             optimizer=self.optimizer,
-            factor=config.lr_scheduler_gamma,
-            patience=config.lr_scheduler_step
+            step_size=config.lr_scheduler_step,
+            gamma=config.lr_scheduler_gamma
         )
         
         # Setup metrics
