@@ -37,7 +37,6 @@ class BiFPN(nn.Module):
         n5 = self.bu_conv2(p5 + F.max_pool2d(n4, kernel_size=2))
         n6 = self.bu_conv2(p6 + F.max_pool2d(n5, kernel_size=2))
         
-        print("Feature maps from BiFPN:", {'0': n4.shape, '1': n5.shape, '2': n6.shape})
         return {'0': n4, '1': n5, '2': n6}
 
 class MobileNetV3LargeBackbone(nn.Module):
@@ -77,7 +76,6 @@ class MobileNetV3LargeBackbone(nn.Module):
             '3': enc3, '4': enc4
         })
         
-        print("Feature maps from BiFPN:", bifpn_output.keys())
         return bifpn_output
 
 def create_mobilenetv3_large_fcos(num_classes):
