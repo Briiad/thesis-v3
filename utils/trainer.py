@@ -11,6 +11,12 @@ from typing import Dict
 from utils.customMetrics import calculate_map
 
 class Trainer:
+    @staticmethod
+    def warmup_scheduler(epoch):
+        if epoch < 5:
+            return epoch / 5
+        return 0.5 * (1 + torch.cos((epoch - 5) / (100 - 5) * 3.1415926535))
+      
     def __init__(self, model, train_loader, val_loader, test_loader, config):
         self.model = model
         self.train_loader = train_loader
@@ -49,7 +55,7 @@ class Trainer:
         # )
         self.scheduler = LambdaLR(
             optimizer=self.optimizer,
-            lr_lambda=self.warmup_scheduler
+            lr_lambda=Trainer.warmup_scheduler
         )
         # self.scheduler = StepLR(
         #     optimizer=self.optimizer,
