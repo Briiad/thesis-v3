@@ -1,8 +1,8 @@
 # Dataset and training configuration
 DATA_DIR = "./dataset"       # Path to the folder containing the images
 BATCH_SIZE = 8
-NUM_EPOCHS = 25
-LEARNING_RATE = 1e-3
+NUM_EPOCHS = 20
+LEARNING_RATE = 1e-4
 TRAIN_RATIO = 0.8            # Ratio for train/validation split
 
 # Image preprocessing configuration
@@ -13,5 +13,6 @@ STD  = [0.229, 0.224, 0.225]
 
 # Number of classes (acne levels 0,1,2,3)
 NUM_CLASSES = 4
+CLASS_WEIGHTS = [1.0, 1.0, 2.0, 2.0]
 
-MODEL_SAVE_PATH = "./saved_models/light_cnn.pth"
+MODEL_SAVE_PATH = "./saved_models/efficientnet.pth"

@@ -1,7 +1,7 @@
 import torch
 from torchvision import transforms
 from loader import get_loaders
-from model import EnhancedLightCNN
+from model import EfficientNetClassifier
 from trainer import Trainer
 import config
 
@@ -31,13 +31,22 @@ def main():
         transform_val=val_transform
     )
     
-    model = EnhancedLightCNN(num_classes=config.NUM_CLASSES).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE)
+    model = EfficientNetClassifier(num_classes=config.NUM_CLASSES).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=5e-4)
     
     # For multiclass classification
-    criterion = torch.nn.CrossEntropyLoss()
+    class_weights = torch.tensor(config.CLASS_WEIGHTS).float().to(device)
+    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
     
-    trainer = Trainer(model, train_loader, val_loader, optimizer, criterion, device, num_classes=config.NUM_CLASSES)
+    # Scheduler
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0=10,
+        T_mult=1,
+        eta_min=1e-6
+    )
+    
+    trainer = Trainer(model, train_loader, val_loader, optimizer, criterion, device, scheduler, num_classes=config.NUM_CLASSES)
     trainer.train(config.NUM_EPOCHS)
     
 if __name__ == "__main__":

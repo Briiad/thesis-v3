@@ -1,66 +1,33 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from config import IMAGE_SIZE, NUM_CLASSES
+import torchvision.models as models
+from config import NUM_CLASSES, IMAGE_SIZE
 
-class EnhancedLightCNN(nn.Module):
+class EfficientNetClassifier(nn.Module):
     def __init__(self, num_classes=NUM_CLASSES):
-        super(EnhancedLightCNN, self).__init__()
+        super(EfficientNetClassifier, self).__init__()
+        # Load the pretrained EfficientNet-B0 model from torchvision
+        self.model = models.efficientnet_b0(pretrained=True)
         
-        # Block 1: 3 -> 64
-        self.block1 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2)  # 128x128 -> 64x64
-        )
-        
-        # Block 2: 64 -> 128
-        self.block2 = nn.Sequential(
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2)  # 64x64 -> 32x32
-        )
-        
-        # Block 3: 128 -> 256 (with increased capacity)
-        self.block3 = nn.Sequential(
-            nn.Conv2d(128, 256, 3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # 32x32 -> 16x16
-            nn.Conv2d(256, 256, 3, padding=1),  # Additional conv
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-        )
-        
-        # Block 4: 256 -> 512
-        self.block4 = nn.Sequential(
-            nn.Conv2d(256, 512, 3, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2)  # 16x16 -> 8x8
-        )
-        
-        # Global Average Pooling
-        self.gap = nn.AdaptiveAvgPool2d((1, 1))
-        
-        # Classifier
-        self.fc = nn.Linear(512, num_classes)
-        
+        # Optionally, freeze the feature extractor:
+        # for param in self.model.parameters():
+        #     param.requires_grad = False
+
+        # Replace the classifier head.
+        # EfficientNet-B0 has a classifier like: Sequential(
+        #   Dropout(p=0.2, inplace=True),
+        #   Linear(in_features=1280, out_features=1000, bias=True)
+        # )
+        in_features = self.model.classifier[1].in_features
+        self.model.classifier[1] = nn.Linear(in_features, num_classes)
+
     def forward(self, x):
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        x = self.block4(x)
-        x = self.gap(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-        return x
+        return self.model(x)
 
 if __name__ == '__main__':
-    model = EnhancedLightCNN()
+    # For testing: create a dummy input and print the model summary.
+    model = EfficientNetClassifier(num_classes=NUM_CLASSES)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
     dummy_input = torch.randn(1, 3, IMAGE_SIZE, IMAGE_SIZE)
     output = model(dummy_input)
-    print(output.shape)
+    print("Output shape:", output.shape)
