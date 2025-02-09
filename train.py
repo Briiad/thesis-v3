@@ -14,7 +14,7 @@ if __name__ == '__main__':
   train_loader, val_loader, test_loader = loaders()
 
   # Initialize trainer
-  trainer = Trainer(model, train_loader, val_loader, train_cfg)
+  trainer = Trainer(model, train_loader, val_loader, test_loader, train_cfg)
 
   # Start training
   final_metrics = trainer.train()
