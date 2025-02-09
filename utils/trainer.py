@@ -16,7 +16,7 @@ class Trainer:
     def warmup_scheduler(epoch):
         if epoch < 5:
             return epoch / 5
-        return 0.5 * (1 + torch.cos((epoch - 5) / (100 - 5) * 3.1415926535))
+        return 0.5 * (1 + math.cos((epoch - 5) / (100 - 5) * math.pi))
       
     def __init__(self, model, train_loader, val_loader, test_loader, config):
         self.model = model
@@ -87,11 +87,6 @@ class Trainer:
         
         # Initialize best mAP for model saving
         self.best_map = 0.0
-        
-    def warmup_scheduler(epoch):
-        if epoch < 5:
-            return epoch / 5
-        return 0.5 * (1 + math.cos((epoch - 5) / (100 - 5) * math.pi))
 
     def train_one_epoch(self, epoch: int) -> Dict:
         self.model.train()
