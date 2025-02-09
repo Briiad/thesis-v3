@@ -35,10 +35,10 @@ class Trainer:
             momentum=0.9,
             weight_decay=config.weight_decay
         )
-        self.scheduler = CosineAnnealingLR(
+        self.scheduler = StepLR(
             optimizer=self.optimizer,
-            T_max=config.epochs,
-            eta_min=1e-6
+            step_size=config.lr_scheduler_step,
+            gamma=config.lr_scheduler_gamma
         )
         
         # Setup metrics
@@ -95,42 +95,28 @@ class Trainer:
         return {'train_loss': avg_loss}
       
     def _prepare_classification_inputs(self, predictions, targets):
-        """
-        Prepare inputs for classification metrics from object detection predictions.
-        
-        Args:
-            predictions (List[Dict]): Model predictions
-            targets (List[Dict]): Ground truth targets
-        
-        Returns:
-            Tuple of tensors for classification metrics
-        """
-        # Collect all predicted labels and true labels
         all_pred_labels = []
         all_true_labels = []
         
         for pred, target in zip(predictions, targets):
-            # If using the most confident prediction per image
             if len(pred['labels']) > 0:
-                # Find the index of the highest scoring prediction
+                # Use the most confident prediction
                 max_score_idx = pred['scores'].argmax()
-                all_pred_labels.append(pred['labels'][max_score_idx])
+                all_pred_labels.append(pred['labels'][max_score_idx].item())
             else:
-                # If no predictions, use a background/null class (typically 0)
-                all_pred_labels.append(torch.tensor(0).to(self.device))
-            
-            # Use the first/most confident label from ground truth if multiple
+                all_pred_labels.append(0)  # Background class
+
             if len(target['labels']) > 0:
-                all_true_labels.append(target['labels'][0])
+                all_true_labels.append(target['labels'][0].item())
             else:
-                # If no ground truth labels, use a background/null class
-                all_true_labels.append(torch.tensor(0).to(self.device))
+                all_true_labels.append(0)  # Background class
         
-        # Convert to tensor
-        pred_labels = torch.stack(all_pred_labels)
-        true_labels = torch.stack(all_true_labels)
+        # Convert to tensor with correct shape
+        pred_labels = torch.tensor(all_pred_labels, dtype=torch.long, device=self.device)
+        true_labels = torch.tensor(all_true_labels, dtype=torch.long, device=self.device)
         
         return pred_labels, true_labels
+
 
     def validate(self) -> Dict:
         """Validate the model using custom mAP implementation"""
