@@ -27,7 +27,7 @@ class DataConfig:
     
     # Categories
     categories: List[str] = field(default_factory=lambda: [
-        "blackheads", "dark spot", "nodules", 
+        "__background__","blackheads", "dark spot", "nodules", 
         "papules", "pustules", "whiteheads"
     ])
     
