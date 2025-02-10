@@ -35,10 +35,7 @@ class CustomVOCDataset(Dataset):
         # Create transform
         if transform is None:
             self.transform = A.Compose([
-                A.HorizontalFlip(p=flip_prob),
-                A.RandomBrightnessContrast(p=brightness_contrast_prob),
-                A.Rotate(limit=15, p=rotate_prob),  # Allow slight rotations
-                A.CLAHE(p=0.2),
+                A.Resize(self.img_size[0], self.img_size[1]),
                 A.Normalize(mean=mean, std=std),
                 ToTensorV2()
             ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))

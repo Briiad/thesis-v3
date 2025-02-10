@@ -1,6 +1,6 @@
 import torch
 from torch.optim import Adam, AdamW, SGD
-from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlateau, LambdaLR
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlateau, LambdaLR, CosineAnnealingWarmRestarts
 import os
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -45,8 +45,7 @@ class Trainer:
         # self.optimizer = AdamW(
         #     self.model.parameters(),
         #     lr=config.learning_rate,
-        #     weight_decay=config.weight_decay,
-        #     # fused=True
+        #     weight_decay=config.weight_decay
         # )
         self.optimizer = SGD(
             self.model.parameters(),
@@ -60,10 +59,16 @@ class Trainer:
         #     T_max=config.epochs,
         #     eta_min=1e-6
         # )
-        self.scheduler = LambdaLR(
+        self.scheduler = CosineAnnealingWarmRestarts(
             optimizer=self.optimizer,
-            lr_lambda=Trainer.lr_lambda
+            T_0=10,
+            T_mult=1,
+            eta_min=1e-4
         )
+        # self.scheduler = LambdaLR(
+        #     optimizer=self.optimizer,
+        #     lr_lambda=Trainer.lr_lambda
+        # )
         # self.scheduler = StepLR(
         #     optimizer=self.optimizer,
         #     step_size=config.lr_scheduler_step,
