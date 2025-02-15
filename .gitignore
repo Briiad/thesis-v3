@@ -6,3 +6,4 @@
 /ml/dataset
 /ml/inference_results
 /ml/saved_models
+best_model.pth
