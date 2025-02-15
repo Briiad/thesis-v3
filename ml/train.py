@@ -1,7 +1,7 @@
 import torch
 from torchvision import transforms
 from loader import get_loaders
-from model import EfficientNetClassifier
+from model import MobileNetV3Classifier
 from trainer import Trainer
 import config
 
@@ -31,7 +31,7 @@ def main():
         transform_val=val_transform
     )
     
-    model = EfficientNetClassifier(num_classes=config.NUM_CLASSES).to(device)
+    model = MobileNetV3Classifier(num_classes=config.NUM_CLASSES).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=5e-4)
     
     # For multiclass classification
