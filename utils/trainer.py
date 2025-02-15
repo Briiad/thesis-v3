@@ -121,13 +121,13 @@ class Trainer:
             
             # Forward pass
             loss_dict = self.model(images, targets)
-            loss_cls = loss_dict["classification"]
-            loss_box = loss_dict["bbox_regression"]
-            loss_ctr = loss_dict["bbox_ctrness"]
-            alpha = 1.0  
-            beta = 1.0  
-            gamma = 0.5 
-            losses = alpha * loss_cls + beta * loss_box + gamma * loss_ctr
+            # loss_cls = loss_dict["classification"]
+            # loss_box = loss_dict["bbox_regression"]
+            # loss_ctr = loss_dict["bbox_ctrness"]
+            # alpha = 1.0  
+            # beta = 1.0  
+            # gamma = 0.5 
+            losses = sum(loss for loss in loss_dict.values())
             
             # Backward pass
             self.optimizer.zero_grad()
