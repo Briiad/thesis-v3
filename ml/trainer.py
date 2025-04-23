@@ -43,8 +43,7 @@ class Trainer:
             loss.backward()
             self.optimizer.step()
             
-            # Update scheduler on a per-batch basis for CosineAnnealingWarmRestarts:
-            self.scheduler.step(self.current_epoch + batch_idx / num_batches)
+            self.scheduler.step()
             
             running_loss += loss.item() * images.size(0)
         epoch_loss = running_loss / len(self.train_loader.dataset)
@@ -118,11 +117,14 @@ class Trainer:
         }, config.MODEL_SAVE_PATH)
         print(f"Model saved to {config.MODEL_SAVE_PATH}")
     
-    def train(self, num_epochs):
+    def train(self, num_epochs, patience=5):
         best_val_loss = float('inf')
+        epochs_no_improve = 0
+
         for epoch in range(num_epochs):
-            self.current_epoch = epoch  # update epoch count
+            self.current_epoch = epoch  # Update epoch count
             print(f"Epoch {epoch+1}/{num_epochs}")
+
             train_loss = self.train_epoch()
             val_loss, precision, recall, f1, auroc, cm = self.validate_epoch()
             print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | "

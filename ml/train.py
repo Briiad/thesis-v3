@@ -1,7 +1,7 @@
 import torch
 from torchvision import transforms
 from loader import get_loaders
-from model import MobileNetV3Classifier
+from model import EfficientNetClassifier
 from trainer import Trainer
 import config
 
@@ -31,19 +31,22 @@ def main():
         transform_val=val_transform
     )
     
-    model = MobileNetV3Classifier(num_classes=config.NUM_CLASSES).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=5e-4)
+    # Initialize the model with transfer learning (pretrained weights) for small datasets
+    model = EfficientNetClassifier(num_classes=config.NUM_CLASSES,).to(device)
     
-    # For multiclass classification
+    # Use a lower learning rate for fine-tuning
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    
+    # For multiclass classification with class imbalance handling via weighted loss
     class_weights = torch.tensor(config.CLASS_WEIGHTS).float().to(device)
     criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
     
-    # Scheduler
+    # Scheduler with a shorter restart period for more frequent learning rate adjustments
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer,
-        T_0=10,
-        T_mult=1,
-        eta_min=1e-6
+      optimizer,
+      T_0=5,
+      T_mult=1,
+      eta_min=1e-6
     )
     
     trainer = Trainer(model, train_loader, val_loader, optimizer, criterion, device, scheduler, num_classes=config.NUM_CLASSES)

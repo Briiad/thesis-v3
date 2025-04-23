@@ -41,7 +41,7 @@ class MobileNetV2SSDBackbone(nn.Module):
         f2 = self.stage2(f1)
         f3 = self.stage3(f2)
         p1 = self.conv1x1_1(f1)
-        p2 = self.conv1x1_2(f2)  # ERROR happens here!
+        p2 = self.conv1x1_2(f2)
         p3 = self.conv1x1_3(f3)
         return {'0': p1, '1': p2, '2': p3}
 
