@@ -52,7 +52,7 @@ class Trainer:
         self.scheduler = CosineAnnealingWarmRestarts(
             optimizer=self.optimizer,
             T_0=10,
-            T_mult=2,
+            T_mult=1,
             eta_min=1e-4
         )
         
