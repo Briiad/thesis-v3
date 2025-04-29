@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import cv2
-import numpy as np
+import random
 
 class CustomVOCDataset(Dataset):
     def __init__(self, data_dir, img_size=(320, 320), 
@@ -16,6 +16,8 @@ class CustomVOCDataset(Dataset):
                  flip_prob=0.5,
                  brightness_contrast_prob=0.2,
                  rotate_prob=0.3,
+                 use_gan_aug: bool = False,
+                 gan_ckpt: str = None,
                  num_classes=7):
         """
         Custom VOC-style Dataset for Object Detection with robust filename handling
@@ -41,6 +43,13 @@ class CustomVOCDataset(Dataset):
             ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
         else:
             self.transform = transform
+        
+        self.use_gan_aug = use_gan_aug
+        if self.use_gan_aug and gan_ckpt:
+            from model.gan_model import UNetGenerator
+            self.generator = UNetGenerator()
+            self.generator.load_state_dict(torch.load(gan_ckpt, map_location='cpu'))
+            self.generator.eval()
     
     def _get_valid_samples(self):
         """
@@ -148,5 +157,14 @@ class CustomVOCDataset(Dataset):
             bboxes=bboxes,
             labels=labels
         )
+        img_tensor = transformed['image']        # [3,H,W], floats in [0,1]
+        boxes      = transformed['bboxes']
+        labels     = transformed['labels']
         
-        return transformed['image'], transformed['bboxes'], transformed['labels']
+          # --- GAN Augmentation: 50% of the time ---
+        if self.use_gan_aug:
+            with torch.no_grad():
+                fake = self.generator(image.unsqueeze(0))
+            image = fake.squeeze(0).clamp(0, 1)
+
+        return img_tensor, boxes, labels

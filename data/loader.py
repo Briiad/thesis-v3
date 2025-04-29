@@ -21,7 +21,9 @@ train_dataset = CustomVOCDataset(
     img_size=data_cfg.img_size,
     mean=data_cfg.mean,
     std=data_cfg.std,
-    categories=data_cfg.categories
+    categories=data_cfg.categories,
+    use_gan_aug=True,
+    gan_ckpt=data_cfg.gan_ckpt
 )
 
 val_dataset = CustomVOCDataset(
@@ -29,7 +31,8 @@ val_dataset = CustomVOCDataset(
     img_size=data_cfg.img_size,
     mean=data_cfg.mean,
     std=data_cfg.std,
-    categories=data_cfg.categories
+    categories=data_cfg.categories,
+    use_gan_aug=False
 )
 
 test_dataset = CustomVOCDataset(
@@ -37,7 +40,8 @@ test_dataset = CustomVOCDataset(
     img_size=data_cfg.img_size,
     mean=data_cfg.mean,
     std=data_cfg.std,
-    categories=data_cfg.categories
+    categories=data_cfg.categories,
+    use_gan_aug=False
 )
 
 if __name__ == '__main__':

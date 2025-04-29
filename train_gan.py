@@ -1,0 +1,98 @@
+# train_gan.py
+
+import os
+import glob
+import cv2
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
+from model.gan_model import UNetGenerator, UNetDiscriminator
+
+class ImageDataset(Dataset):
+    def __init__(self, img_dir, img_size=(320,320)):
+        self.img_paths = [p for p in glob.glob(os.path.join(img_dir, '*')) 
+                          if p.lower().endswith(('.jpg','.jpeg','.png','.bmp'))]
+        self.transform = A.Compose([
+            A.Resize(img_size[0], img_size[1]),
+            A.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5)),
+            ToTensorV2()
+        ])
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+        path = self.img_paths[idx]
+        img = cv2.imread(path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        augmented = self.transform(image=img)
+        return augmented['image']
+
+
+def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None):
+    device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+    dataset = ImageDataset(data_dir)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True)
+
+    gen = UNetGenerator().to(device)
+    dis = UNetDiscriminator().to(device)
+
+    criterion = nn.BCELoss()
+    optim_g = optim.Adam(gen.parameters(), lr=lr, betas=(0.5, 0.999))
+    optim_d = optim.Adam(dis.parameters(), lr=lr, betas=(0.5, 0.999))
+
+    real_label, fake_label = 1., 0.
+
+    for epoch in range(1, epochs+1):
+        for real_imgs in loader:
+            real_imgs = real_imgs.to(device)
+
+            # Discriminator step
+            dis.zero_grad()
+            out_real = dis(real_imgs)
+            labels_real = torch.full((out_real.size(0),), real_label, device=device)
+            loss_d_real = criterion(out_real, labels_real)
+
+            fake_imgs = gen(real_imgs)
+            out_fake = dis(fake_imgs.detach())
+            labels_fake = torch.full((out_fake.size(0),), fake_label, device=device)
+            loss_d_fake = criterion(out_fake, labels_fake)
+
+            loss_d = (loss_d_real + loss_d_fake) * 0.5
+            loss_d.backward()
+            optim_d.step()
+
+            # Generator step
+            gen.zero_grad()
+            out_fake_for_g = dis(fake_imgs)
+            labels_gen = torch.full((out_fake_for_g.size(0),), real_label, device=device)
+            loss_g = criterion(out_fake_for_g, labels_gen)
+            loss_g.backward()
+            optim_g.step()
+
+        print(f"[Epoch {epoch}/{epochs}] Loss_D: {loss_d.item():.4f}  Loss_G: {loss_g.item():.4f}")
+        torch.save(gen.state_dict(), gan_ckpt)
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_dir', type=str, required=True,
+                        help='folder containing all training images')
+    parser.add_argument('--gan_ckpt', type=str, default='gan_generator.pth',
+                        help='where to save generator weights')
+    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--batch_size', type=int, default=16)
+    args = parser.parse_args()
+
+    train_gan(
+        data_dir=args.data_dir,
+        gan_ckpt=args.gan_ckpt,
+        epochs=args.epochs,
+        batch_size=args.batch_size
+    )

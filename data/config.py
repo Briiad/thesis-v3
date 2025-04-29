@@ -9,6 +9,7 @@ class DataConfig:
     train_dir: str = "dataset/train"
     valid_dir: str = "dataset/valid"
     test_dir: str = "dataset/test"
+    gan_ckpt = 'gan_generator.pth'
     
     # Image settings
     img_size: Tuple[int, int] = (640, 640)
