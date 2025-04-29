@@ -33,6 +33,7 @@ class CustomVOCDataset(Dataset):
         self.categories = categories or []
         # Adjust indexing to start at 1 (0 is reserved for background)
         self.cat_to_idx = {cat: i+1 for i, cat in enumerate(self.categories)}
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # Create transform
         if transform is None:
@@ -170,6 +171,6 @@ class CustomVOCDataset(Dataset):
         labels     = transformed['labels']
         
         if self.use_gan_aug:
-            image = self._apply_gan_augmentation(image)
+            img_tensor = self._apply_gan_augmentation(img_tensor)
 
         return img_tensor, boxes, labels
