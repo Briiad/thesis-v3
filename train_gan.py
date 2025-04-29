@@ -1,5 +1,3 @@
-# train_gan.py
-
 import os
 import glob
 import cv2
@@ -7,11 +5,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
-# make sure this matches your gan_model.py path
 from model.gan_model import UNetGenerator, UNetDiscriminator
 
 class ImageDataset(Dataset):
@@ -54,8 +52,12 @@ def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None
 
     real_label_val, fake_label_val = 1.0, 0.0
 
-    for epoch in range(1, epochs+1):
-        for real_imgs in loader:
+    for epoch in range(1, epochs + 1):
+        epoch_d_loss = 0.0
+        epoch_g_loss = 0.0
+
+        pbar = tqdm(loader, desc=f"Epoch {epoch}/{epochs}", ncols=100)
+        for real_imgs in pbar:
             real_imgs = real_imgs.to(device)
 
             # ---- Discriminator step ----
@@ -81,7 +83,19 @@ def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None
             loss_g.backward()
             optim_g.step()
 
-        print(f"[Epoch {epoch}/{epochs}] Loss_D: {loss_d.item():.4f}  Loss_G: {loss_g.item():.4f}")
+            epoch_d_loss += loss_d.item()
+            epoch_g_loss += loss_g.item()
+
+            pbar.set_postfix({
+                "Loss_D": f"{loss_d.item():.4f}",
+                "Loss_G": f"{loss_g.item():.4f}"
+            })
+
+        avg_d = epoch_d_loss / len(loader)
+        avg_g = epoch_g_loss / len(loader)
+        tqdm.write(f"Epoch {epoch} Summary — Avg Loss_D: {avg_d:.4f}, Avg Loss_G: {avg_g:.4f}")
+
+        # save generator checkpoint after each epoch
         torch.save(gen.state_dict(), gan_ckpt)
 
 
