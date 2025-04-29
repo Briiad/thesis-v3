@@ -49,7 +49,7 @@ class CustomVOCDataset(Dataset):
         if self.use_gan_aug and gan_ckpt:
             from model.gan_model import UNetGenerator
             self.generator = UNetGenerator()
-            self.generator.load_state_dict(torch.load(gan_ckpt, map_location='cpu'))
+            self.generator.load_state_dict(torch.load(gan_ckpt, map_location=self.device))
             self.generator.eval()
     
     def _get_valid_samples(self):
