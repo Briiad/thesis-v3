@@ -47,8 +47,8 @@ class CustomVOCDataset(Dataset):
         
         self.use_gan_aug = use_gan_aug
         if self.use_gan_aug and gan_ckpt:
-            from model.gan_model import SimpleGenerator
-            self.generator = SimpleGenerator()
+            from model.gan_model import UNetGenerator
+            self.generator = UNetGenerator()
             self.generator.load_state_dict(torch.load(gan_ckpt, map_location=self.device))
             self.generator.to(self.device)
             self.generator.eval()

@@ -10,7 +10,7 @@ from tqdm import tqdm
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
-from model.gan_model import SimpleGenerator, SimpleDiscriminator
+from model.gan_model import UNetGenerator, UNetDiscriminator
 
 class ImageDataset(Dataset):
     def __init__(self, img_dir, img_size=(320,320)):
@@ -43,8 +43,8 @@ def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None
         shuffle=True, num_workers=4, drop_last=True
     )
 
-    gen = SimpleGenerator().to(device)
-    dis = SimpleDiscriminator().to(device)
+    gen = UNetGenerator().to(device)
+    dis = UNetDiscriminator().to(device)
 
     criterion = nn.BCELoss()
     optim_g = optim.Adam(gen.parameters(), lr=lr)
