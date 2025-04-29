@@ -35,7 +35,7 @@ class ImageDataset(Dataset):
         return augmented['image']
 
 
-def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None):
+def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=3e-5, device=None):
     device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
     dataset = ImageDataset(data_dir)
     loader = DataLoader(
@@ -46,9 +46,9 @@ def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None
     gen = UNetGenerator().to(device)
     dis = UNetDiscriminator().to(device)
 
-    criterion = nn.BCELoss()
-    optim_g = optim.Adam(gen.parameters(), lr=lr, betas=(0.5, 0.999))
-    optim_d = optim.Adam(dis.parameters(), lr=lr, betas=(0.5, 0.999))
+    criterion = nn.CrossEntropyLoss()
+    optim_g = optim.Adam(gen.parameters(), lr=lr)
+    optim_d = optim.Adam(dis.parameters(), lr=lr)
 
     real_label_val, fake_label_val = 1.0, 0.0
 

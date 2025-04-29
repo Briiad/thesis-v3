@@ -11,7 +11,7 @@ from utils.trainer import Trainer
 if __name__ == '__main__':
   freeze_support()
   # Create model and get dataloaders
-  model = get_retinanet_model(num_classes=data_cfg.num_classes)
+  model = create_mobilenetv3_fcos(num_classes=data_cfg.num_classes)
   train_loader, val_loader, test_loader = loaders()
 
   # Initialize trainer
