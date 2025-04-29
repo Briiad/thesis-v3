@@ -128,6 +128,14 @@ class CustomVOCDataset(Dataset):
           print(f"Error parsing annotation {xml_path}: {e}")
           return [], []
     
+    def _apply_gan_augmentation(self, img_tensor):
+        # img_tensor: torch.Tensor [C,H,W], in [0,1] or normalized range
+        img = img_tensor.to(self.device).unsqueeze(0)   # [1,C,H,W]
+        with torch.no_grad():
+            fake = self.generator(img)                  # [1,C,H,W]
+        fake = fake.squeeze(0).cpu()                    # [C,H,W]
+        return fake.clamp(0, 1)
+    
     def __getitem__(self, idx):
         # Get image and annotation paths
         sample = self.valid_samples[idx]
@@ -161,10 +169,7 @@ class CustomVOCDataset(Dataset):
         boxes      = transformed['bboxes']
         labels     = transformed['labels']
         
-          # --- GAN Augmentation: 50% of the time ---
         if self.use_gan_aug:
-            with torch.no_grad():
-                fake = self.generator(image.unsqueeze(0))
-            image = fake.squeeze(0).clamp(0, 1)
+            image = self._apply_gan_augmentation(image)
 
         return img_tensor, boxes, labels
