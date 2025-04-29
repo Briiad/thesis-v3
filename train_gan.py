@@ -120,3 +120,6 @@ if __name__ == '__main__':
         epochs=args.epochs,
         batch_size=args.batch_size
     )
+    
+    # Remove remaining cache and reset CUDA memory usage
+    torch.cuda.empty_cache()

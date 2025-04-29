@@ -2,6 +2,9 @@ import torch
 from torch.utils.data import DataLoader
 from data.dataset import CustomVOCDataset
 from config.config import data_cfg
+import torch.multiprocessing as mp
+
+mp.set_start_method('spawn', force=True)
 
 def count_annotations(dataset):
     # Initialize count dictionary for each class in your categories list
