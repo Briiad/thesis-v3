@@ -1,5 +1,5 @@
-from dataset import CustomVOCDataset
-from config import data_cfg
+from .dataset import CustomVOCDataset
+from .config import data_cfg
 
 def count_annotations(dataset):
     # Initialize count dictionary for each class in your categories list

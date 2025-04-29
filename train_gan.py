@@ -11,12 +11,15 @@ from torch.utils.data import Dataset, DataLoader
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
+# make sure this matches your gan_model.py path
 from model.gan_model import UNetGenerator, UNetDiscriminator
 
 class ImageDataset(Dataset):
     def __init__(self, img_dir, img_size=(320,320)):
-        self.img_paths = [p for p in glob.glob(os.path.join(img_dir, '*')) 
-                          if p.lower().endswith(('.jpg','.jpeg','.png','.bmp'))]
+        self.img_paths = [
+            p for p in glob.glob(os.path.join(img_dir, '*'))
+            if p.lower().endswith(('.jpg','.jpeg','.png','.bmp'))
+        ]
         self.transform = A.Compose([
             A.Resize(img_size[0], img_size[1]),
             A.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5)),
@@ -37,7 +40,10 @@ class ImageDataset(Dataset):
 def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None):
     device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
     dataset = ImageDataset(data_dir)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True)
+    loader = DataLoader(
+        dataset, batch_size=batch_size,
+        shuffle=True, num_workers=4, drop_last=True
+    )
 
     gen = UNetGenerator().to(device)
     dis = UNetDiscriminator().to(device)
@@ -46,31 +52,31 @@ def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None
     optim_g = optim.Adam(gen.parameters(), lr=lr, betas=(0.5, 0.999))
     optim_d = optim.Adam(dis.parameters(), lr=lr, betas=(0.5, 0.999))
 
-    real_label, fake_label = 1., 0.
+    real_label_val, fake_label_val = 1.0, 0.0
 
     for epoch in range(1, epochs+1):
         for real_imgs in loader:
             real_imgs = real_imgs.to(device)
 
-            # Discriminator step
+            # ---- Discriminator step ----
             dis.zero_grad()
-            out_real = dis(real_imgs)
-            labels_real = torch.full((out_real.size(0),), real_label, device=device)
+            out_real = dis(real_imgs)                         # [B,1,H,W]
+            labels_real = torch.full_like(out_real, real_label_val, device=device)
             loss_d_real = criterion(out_real, labels_real)
 
             fake_imgs = gen(real_imgs)
-            out_fake = dis(fake_imgs.detach())
-            labels_fake = torch.full((out_fake.size(0),), fake_label, device=device)
+            out_fake = dis(fake_imgs.detach())                # [B,1,H,W]
+            labels_fake = torch.full_like(out_fake, fake_label_val, device=device)
             loss_d_fake = criterion(out_fake, labels_fake)
 
-            loss_d = (loss_d_real + loss_d_fake) * 0.5
+            loss_d = 0.5 * (loss_d_real + loss_d_fake)
             loss_d.backward()
             optim_d.step()
 
-            # Generator step
+            # ---- Generator step ----
             gen.zero_grad()
-            out_fake_for_g = dis(fake_imgs)
-            labels_gen = torch.full((out_fake_for_g.size(0),), real_label, device=device)
+            out_fake_for_g = dis(fake_imgs)                   # [B,1,H,W]
+            labels_gen = torch.full_like(out_fake_for_g, real_label_val, device=device)
             loss_g = criterion(out_fake_for_g, labels_gen)
             loss_g.backward()
             optim_g.step()
@@ -82,10 +88,14 @@ def train_gan(data_dir, gan_ckpt, epochs=50, batch_size=16, lr=2e-4, device=None
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, required=True,
-                        help='folder containing all training images')
-    parser.add_argument('--gan_ckpt', type=str, default='gan_generator.pth',
-                        help='where to save generator weights')
+    parser.add_argument(
+        '--data_dir', type=str, required=True,
+        help='folder containing all training images'
+    )
+    parser.add_argument(
+        '--gan_ckpt', type=str, default='gan_generator.pth',
+        help='where to save generator weights'
+    )
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=16)
     args = parser.parse_args()
