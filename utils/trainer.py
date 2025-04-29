@@ -41,12 +41,6 @@ class Trainer:
         for param in self.model.backbone.parameters():
             param.requires_grad = True
         
-        # Setup optimizer and scheduler
-        # self.optimizer = AdamW(
-        #     self.model.parameters(),
-        #     lr=config.learning_rate,
-        #     weight_decay=config.weight_decay
-        # )
         self.optimizer = SGD(
             self.model.parameters(),
             lr=config.learning_rate,
@@ -54,26 +48,13 @@ class Trainer:
             weight_decay=config.weight_decay,
             nesterov=True
         )
-        # self.scheduler = CosineAnnealingLR(
-        #     optimizer=self.optimizer,
-        #     T_max=config.epochs,
-        #     eta_min=1e-6
-        # )
+
         self.scheduler = CosineAnnealingWarmRestarts(
             optimizer=self.optimizer,
             T_0=10,
             T_mult=2,
             eta_min=1e-4
         )
-        # self.scheduler = LambdaLR(
-        #     optimizer=self.optimizer,
-        #     lr_lambda=Trainer.lr_lambda
-        # )
-        # self.scheduler = StepLR(
-        #     optimizer=self.optimizer,
-        #     step_size=config.lr_scheduler_step,
-        #     gamma=config.lr_scheduler_gamma
-        # )
         
         # Setup metrics
         self.map_metric = MeanAveragePrecision(
@@ -121,12 +102,6 @@ class Trainer:
             
             # Forward pass
             loss_dict = self.model(images, targets)
-            # loss_cls = loss_dict["classification"]
-            # loss_box = loss_dict["bbox_regression"]
-            # loss_ctr = loss_dict["bbox_ctrness"]
-            # alpha = 1.0  
-            # beta = 1.0  
-            # gamma = 0.5 
             losses = sum(loss for loss in loss_dict.values())
             
             # Backward pass
